@@ -75,6 +75,21 @@ C = np.einsum(
 
 For a complete compact loading example, see `verify.py`.
 
+## Maple Generators
+
+The directory `scripts/` contains Maple generators for the two construction families.  The file `KGP2026_even.mpl` implements the even-dimensional construction `N > 18` with
+
+```text
+Rₑ(N) = N³/3 + 15N²/4 + 29N/3 + 7,
+```
+
+and `KGP2026_odd.mpl` implements the odd-dimensional construction `N > 18`, with
+
+```text
+Rₒ(N) = (4N³ + 57N² + 14N − 15)/12 − floor(3(N − 1)/8).
+```
+
+
 ## Verification Example
 
 The schemes were verified exactly over `Q`.  The small NumPy script
@@ -85,3 +100,18 @@ Run from the repository root:
 ```bash
 python data\npz\verify.py
 ```
+
+## Citation
+
+If you use these schemes, please cite this repository:
+
+```bibtex
+@misc{khoruzhii2026lita,
+  author       = {Kirill Khoruzhii and Patrick Gel{\ss} and Sebastian Pokutta},
+  title        = {Local Improvements to Trilinear Aggregation},
+  year         = {2026},
+  url          = {https://github.com/khoruzhii/lita}
+}
+```
+
+An associated manuscript, *Local Improvements to Trilinear Aggregation*, is in preparation.
