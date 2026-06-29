@@ -1,0 +1,2 @@
+# GitHub Linguist maps .mpl to JetBrains MPS; these files are Maple source.
+*.mpl linguist-language=Text linguist-detectable=false
