@@ -110,6 +110,48 @@ including `N=13`, odd dimensions, and finite-size improvements already stored
 as `.npz` artifacts.  Older Maple sources are kept under `archive/` and are not
 part of the active script set.
 
+## C++ Sources and 2-Reduction
+
+The `src/` directory contains compact header-only C++20 utilities used to build
+and reduce schemes directly:
+
+- `scheme.h` defines sparse rational and modular scheme containers.
+- `ta.h` builds the raw Schwartz-Zwecher trilinear aggregation schemes.
+- `lita.h` builds the current locally improved trilinear aggregation schemes.
+- `reduce.h` finds 2-reductions over a fixed prime and replays them exactly over
+  the rationals.
+
+The reduction API separates the finite-field search from exact application:
+`find_two_reductions()` searches for dependencies among `UV`, `UW`, or `VW`
+pair factors modulo a prime, `lift_two_reductions()` reconstructs the modular
+coefficients as small rationals, and `two_reduce()` applies the resulting
+certificates to a rational scheme.
+
+```text
+Let T = Σₜ uₜ⊗vₜ⊗wₜ , Xₜ = uₜ⊗vₜ and yₜ = wₜ. The decomposition is 2-reducible if, for some p, Xₚ = Σ_{t≠p} αₜ Xₜ. In this case the p-th term can be removed: T = Σ_{t≠p} Xₜ⊗(yₜ + αₜyₚ).
+```
+
+The `test/` directory contains small C++ examples.  In particular,
+`test/test_reduce.cpp` is a fixed `N=18` runner that repeatedly scans the three
+pair spaces until no more 2-reductions are found.  Build and run it from this
+directory with:
+
+```bash
+g++ -std=c++20 -O2 -Wall -Wextra -Isrc test/test_reduce.cpp -o test_reduce
+./test_reduce
+```
+
+Example output:
+
+```text
+ta(N=18) two_reduce: 3350 -> 3341 in 129.95 s
+lita(N=18) two_reduce: 3331 -> 3331 in 47.38 s
+```
+
+Thus the previous raw `ta` construction is 2-reducible for `N=18`, while the
+current `lita` construction is already unchanged by the same full 2-reduction
+pass.
+
 ## Verification Example
 
 The `N <= 32` schemes were checked with the C++ modular verifier over the
