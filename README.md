@@ -128,7 +128,9 @@ coefficients as small rationals, and `two_reduce()` applies the resulting
 certificates to a rational scheme.
 
 ```text
-Let T = Σₜ uₜ⊗vₜ⊗wₜ , Xₜ = uₜ⊗vₜ and yₜ = wₜ. The decomposition is 2-reducible if, for some p, Xₚ = Σ_{t≠p} αₜ Xₜ. In this case the p-th term can be removed: T = Σ_{t≠p} Xₜ⊗(yₜ + αₜyₚ).
+Let T = Σₜ uₜ⊗vₜ⊗wₜ , Xₜ = uₜ⊗vₜ and yₜ = wₜ. 
+The decomposition is 2-reducible if, for some p, Xₚ = Σ_{t≠p} αₜ Xₜ. 
+In this case the p-th term can be removed: T = Σ_{t≠p} Xₜ⊗(yₜ + αₜyₚ).
 ```
 
 The `test/` directory contains small C++ examples.  In particular,
