@@ -1,188 +1,185 @@
 # Local Improvements to Trilinear Aggregation
 
-This directory contains explicit rational square matrix multiplication schemes obtained from local improvements to trilinear aggregation. For the dimensions listed below, their ranks improve the corresponding previously reported upper bounds. 
-
-The table lists schemes ⟨N×N×N : R⟩, with ω = log_N R.
+This repository contains explicit rational schemes for square matrix
+multiplication and a direct implementation of the LITA3 construction. The
+table lists the materialized schemes in `schemes/`. A scheme
+⟨N×N×N : R⟩ has exponent ω = log_N R.
 
 | N | rank R | ω |
-|---:|---:|---|
-| 13 | 1420  | 2.82985 |
-| 19 | 4002  | 2.81702 |
-| 20 | 4297  | 2.79253 |
-| 21 | 5183  | 2.80935 |
-| 22 | 5519  | 2.78739 |
-| 23 | 6570  | 2.80347 |
-| 24 | 6949  | 2.78358 |
-| 25 | 8180  | 2.79894 |
-| 26 | 8639  | 2.78201 |
+|---:|---:|---:|
+| 13 | 1420 | 2.82985 |
+| 19 | 4002 | 2.81702 |
+| 20 | 4297 | 2.79253 |
+| 21 | 5183 | 2.80935 |
+| 22 | 5519 | 2.78739 |
+| 23 | 6570 | 2.80347 |
+| 24 | 6949 | 2.78358 |
+| 25 | 8180 | 2.79894 |
+| 26 | 8633 | 2.78179 |
 | 27 | 10027 | 2.79536 |
-| 28 | 10521 | 2.77928 |
+| 28 | 10514 | 2.77908 |
 | 29 | 12128 | 2.79253 |
-| 30 | 12657 | 2.77725 |
+| 30 | 12605 | 2.77604 |
 | 31 | 14499 | 2.79029 |
-| 32 | 15063 | 2.77574 |
-| 44 | 36065 | **2.77287** |
+| 32 | 15055 | 2.77559 |
+| 34 | 17696 | 2.77371 |
+| 36 | 20686 | 2.77303 |
+| 38 | 23995 | 2.77261 |
+| 40 | 27637 | 2.77236 |
+| 42 | 31630 | **2.77228** |
+| 44 | 36054 | 2.77279 |
 
-For `N=44`, the rank `36065` scheme gives ω = 2.77***287***.  This improves on the 2.77***320*** exponent reported by Schwartz and Zwecher in [arXiv:2508.01748](https://arxiv.org/abs/2508.01748) for the same size.
+For `N=42`, rank `31630` gives the smallest exponent in the catalogue. For
+`N=44`, rank `36054` improves the exponent `2.77320` reported by Schwartz and
+Zwecher in [arXiv:2508.01748](https://arxiv.org/abs/2508.01748) to `2.77279`.
 
-The materialized schemes in `schemes/` are the catalogue artifacts that passed
-the current multi-prime audit.
+## Repository Contents
 
-## Tensor Convention and Loading
+- `schemes/` contains the materialized rational decompositions.
+- `scripts/lita.py` constructs the even-dimensional LITA3 family.
+- `scripts/verify.py` checks the catalogue by random matrix multiplication.
+- `src/scheme.h` defines sparse rational and prime-field schemes.
+- `src/reduce.h` implements sparse 2-reduction.
 
-Each file is `schemes/{N}x{N}x{N}_r{rank}.npz` and stores sparse rational factors `U`, `V`, and `W`. They define the matrix multiplication tensor by
+## Scheme Format
+
+Each file is named `schemes/{N}x{N}x{N}_r{rank}.npz` and stores three sparse
+rational matrices `U`, `V`, and `W`. Their rows define
 
 ```math
-T_{ijk} = \sum_{q=1}^{R} U_{qi} V_{qj} W_{qk}
+T_{ijk} = \sum_{q=1}^{R} U_{qi} V_{qj} W_{qk},
 ```
 
-and the product is decoded as
+where `T` is the matrix multiplication tensor. For flattened input matrices
+`A` and `B`, the product is
 
 ```math
 C_k = \sum_{i,j} T_{ijk} A_i B_j.
 ```
 
-Here `i`, `j`, and `k` are row-major flattened coordinates of `A`, `B`, and
-`C`.
+For each lowercase axis name `u`, `v`, or `w`, the archive contains CSR arrays
+`{axis}_indptr`, `{axis}_indices`, `{axis}_numerators`, and
+`{axis}_denominators`. `metadata_json` records the tensor dimensions, rank,
+coefficient field, and format identifier.
 
-The following Python snippet reads one `.npz` file and expands the sparse
-factors to dense `float64` arrays:
+The following example loads a scheme and uses it to multiply two matrices:
 
 ```python
 import json
 import numpy as np
 
-path = "data/npz/schemes/19x19x19_r4002.npz"
+path = "schemes/19x19x19_r4002.npz"
 
-def read_factor(npz, name, rows, cols):
+def read_axis(npz, name, rows, cols):
     indptr = npz[f"{name}_indptr"]
     indices = npz[f"{name}_indices"]
     values = npz[f"{name}_numerators"] / npz[f"{name}_denominators"]
     row = np.repeat(np.arange(rows), np.diff(indptr))
-    factor = np.zeros((rows, cols), dtype=np.float64)
-    np.add.at(factor, (row, indices), values)
-    return factor
+    axis = np.zeros((rows, cols), dtype=np.float64)
+    np.add.at(axis, (row, indices), values)
+    return axis
 
 with np.load(path, allow_pickle=False) as npz:
-    meta = json.loads(str(npz["metadata_json"].tolist()))
-    N = meta["tensor"][0]
-    R = meta["rank"]
-    U = read_factor(npz, "u", R, N * N)
-    V = read_factor(npz, "v", R, N * N)
-    W = read_factor(npz, "w", R, N * N)
+    metadata = json.loads(str(npz["metadata_json"].tolist()))
+    N = metadata["tensor"][0]
+    R = metadata["rank"]
+    U = read_axis(npz, "u", R, N * N)
+    V = read_axis(npz, "v", R, N * N)
+    W = read_axis(npz, "w", R, N * N)
 
-# usage example
 A = np.random.normal(size=(N, N))
 B = np.random.normal(size=(N, N))
 C = np.einsum(
-    "qi,i,qj,j,qk->k", 
+    "qi,i,qj,j,qk->k",
     U, A.reshape(-1), V, B.reshape(-1), W,
     optimize=True,
 ).reshape(N, N)
+
 # C = A @ B
 ```
 
-For a complete compact loading example, see `scripts/verify.py`.
+## LITA3
 
-## Maple Generator
+`scripts/lita.py` is a self-contained implementation of LITA3 for every even
+`N >= 18`. It combines Pan's lifted trilinear aggregation with three centered
+fields and a universal seven-product tensor. Every rational factor is emitted
+directly from closed formulas. NumPy is used only to write the compressed NPZ
+archive.
 
-The directory `scripts/` contains the active self-contained Maple generator.
-It is a formula source, not a wrapper around the materialized `.npz` files in
-`schemes/`.
+```python
+from scripts.lita import lita3, lita3_rank
 
-The file `scripts/KGP2026.mpl` implements the direct pair-reduced
-even-dimensional construction for even `N >= 18`.  Its public API is:
-
-```maple
-LITACOMPLEXITY(N);
-LITA(triad);
+print(lita3_rank(18))
+scheme = lita3(18)
+scheme.save("18x18x18_r3300.npz")
 ```
 
-with
+The generator can also be run directly:
 
-```text
-R_even(N) = N^3/3 + 15*N^2/4 + 55*N/6 + 7.
+```bash
+python scripts/lita.py 18 18x18x18_r3300.npz
 ```
 
-The materialized `.npz` catalogue in `schemes/` is the source of truth for the
-rank table above.  It also contains schemes not generated by this Maple file,
-including `N=13`, odd dimensions, and finite-size improvements already stored
-as `.npz` artifacts.  Older Maple sources are kept under `archive/` and are not
-part of the active script set.
-
-## C++ Sources and 2-Reduction
-
-The `src/` directory contains compact header-only C++20 utilities used to build
-and reduce schemes directly:
-
-- `scheme.h` defines sparse rational and modular scheme containers.
-- `ta.h` builds the raw Schwartz-Zwecher trilinear aggregation schemes.
-- `lita.h` builds the current locally improved trilinear aggregation schemes.
-- `reduce.h` finds 2-reductions over a fixed prime and replays them exactly over
-  the rationals.
-
-The reduction API separates the finite-field search from exact application:
-`find_two_reductions()` searches for dependencies among `UV`, `UW`, or `VW`
-pair factors modulo a prime, `lift_two_reductions()` reconstructs the modular
-coefficients as small rationals, and `two_reduce()` applies the resulting
-certificates to a rational scheme.
+Its rank is
 
 ```text
-Let T = Σₜ uₜ⊗vₜ⊗wₜ , Xₜ = uₜ⊗vₜ and yₜ = wₜ. 
-The decomposition is 2-reducible if, for some p, Xₚ = Σ_{t≠p} αₜ Xₜ. 
+R_even(N) = (4*N^3 + 45*N^2 + 116*N + 84)/12 - floor(9*N/4).
+```
+
+The catalogue also contains dimension-specific schemes whose ranks need not
+equal this uniform formula.
+
+## Verification
+
+`scripts/verify.py` loads every file in `schemes/` and compares scheme-based
+matrix multiplication with `A @ B`. It performs ten `float64` trials and ten
+trials modulo each of `1000003`, `1000033`, and `1000037`.
+
+```bash
+python scripts/verify.py
+```
+
+## 2-Reducibility
+
+The following property was the main guide in searching for improvements to the
+construction.
+
+```text
+Let T = Σₜ uₜ⊗vₜ⊗wₜ, Xₜ = uₜ⊗vₜ and yₜ = wₜ.
+The decomposition is 2-reducible if, for some p, Xₚ = Σ_{t≠p} αₜ Xₜ.
 In this case the p-th term can be removed: T = Σ_{t≠p} Xₜ⊗(yₜ + αₜyₚ).
 ```
 
-The `test/` directory contains small C++ examples.  In particular,
-`test/test_reduce.cpp` is a fixed `N=18` runner that repeatedly scans the three
-pair spaces until no more 2-reductions are found.  Build and run it from this
-directory with:
+A fast 2-reducibility check is implemented in `src/reduce.h`. It searches for
+linear dependencies among the `UV`, `UW`, or `VW` pair factors, lifts a
+single-prime certificate to small rational coefficients, and applies the
+resulting reduction to a rational scheme. The supporting header `src/scheme.h`
+defines `SchemeQ` for rational coefficients and `SchemeP` for coefficients
+modulo a prime. The principal functions are
+`find_two_reductions()`, `lift_two_reductions()`, and `two_reduce()`.
 
-```bash
-g++ -std=c++20 -O2 -Wall -Wextra -Isrc test/test_reduce.cpp -o test_reduce
-./test_reduce
-```
-
-Example output:
+This is a strict generalization of reducibility: every decomposition reducible in the sense of Kauers and Moosbauer [arXiv:2212.01175](https://arxiv.org/abs/2212.01175) is 2-reducible, but the converse does not hold. For example, consider
 
 ```text
-ta(N=18) two_reduce: 3350 -> 3341 in 129.95 s
-lita(N=18) two_reduce: 3331 -> 3331 in 47.38 s
+T = (1,0)×(1,0)×(1,0) + (0,1)×(0,1)×(0,1) + (1,1)×(1,1)×(1,1) + (1,−1)×(1,−1)×(1,−1).
 ```
 
-Thus the previous raw `ta` construction is 2-reducible for `N=18`, while the
-current `lita` construction is already unchanged by the same full 2-reduction
-pass.
+This decomposition is not reducible, while its pair factors satisfy `(1,1)×(1,1)+(1,−1)×(1,−1) = 2(1,0)×(1,0)+2(0,1)×(0,1)`, so it is 2-reducible to
 
-## Verification Example
-
-The `N <= 32` schemes were checked with the C++ modular verifier over the
-primes `1000003`, `1000033`, and `1000037`.  The refreshed `N=20`, `N=22`, and
-`N=24` files were also checked by the exact `int64` verifier after conversion
-to this `.npz` format.  The `N=44` file was materialized by three-prime CRT
-replay of the accepted UV reductions and passed the same three-prime C++ tensor
-check.  The small NumPy script `scripts/verify.py` is included as a simple
-sanity check for these files: it multiplies random matrices using the stored scheme and
-compares the result with ordinary matrix multiplication over both `float64` and
-the three prime fields `1000003`, `1000033`, and `1000037`.
-
-Run from the repository root:
-
-```bash
-python data\npz\scripts\verify.py
+```text
+T = (1,0)×(1,0)×(3,2) + (0,1)×(0,1)×(2,3) + (1,−1)×(1,−1)×(0,−2).
 ```
 
 ## Citation
 
-If you use these schemes, please cite this repository:
-
 ```bibtex
 @misc{khoruzhii2026lita,
-  author       = {Kirill Khoruzhii and Patrick Gel{\ss} and Sebastian Pokutta},
+  author       = {Kirill Khoruzhii and Luzian Serafin and Patrick Gel{\ss} and Sebastian Pokutta},
   title        = {Local Improvements to Trilinear Aggregation},
   year         = {2026},
   url          = {https://github.com/khoruzhii/lita}
 }
 ```
 
-An associated manuscript, *Local Improvements to Trilinear Aggregation*, is in preparation.
+An associated manuscript, *Local Improvements to Trilinear Aggregation*, is
+in preparation.
