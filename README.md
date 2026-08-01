@@ -1,9 +1,7 @@
 # Local Improvements to Trilinear Aggregation
 
 This repository contains explicit rational schemes for square matrix
-multiplication and a direct implementation of the LITA3 construction. The
-table lists the materialized schemes in `schemes/`. A scheme
-⟨N×N×N : R⟩ has exponent ω = log_N R.
+multiplication and their construction. The table lists the `⟨N×N×N : R⟩` schemes in `schemes/` with exponent `ω = log_N R`.
 
 | N | rank R | ω |
 |---:|---:|---:|
@@ -11,32 +9,32 @@ table lists the materialized schemes in `schemes/`. A scheme
 | 19 | 4002 | 2.81702 |
 | 20 | 4297 | 2.79253 |
 | 21 | 5183 | 2.80935 |
-| 22 | 5519 | 2.78739 |
+| 22 | 5518 | 2.78733 |
 | 23 | 6570 | 2.80347 |
-| 24 | 6949 | 2.78358 |
+| 24 | 6935 | 2.78294 |
 | 25 | 8180 | 2.79894 |
-| 26 | 8633 | 2.78179 |
+| 26 | 8574 | 2.77969 |
 | 27 | 10027 | 2.79536 |
-| 28 | 10514 | 2.77908 |
+| 28 | 10451 | 2.77728 |
 | 29 | 12128 | 2.79253 |
-| 30 | 12605 | 2.77604 |
+| 30 | 12582 | 2.77550 |
 | 31 | 14499 | 2.79029 |
-| 32 | 15055 | 2.77559 |
-| 34 | 17696 | 2.77371 |
-| 36 | 20686 | 2.77303 |
-| 38 | 23995 | 2.77261 |
-| 40 | 27637 | 2.77236 |
-| 42 | 31630 | **2.77228** |
-| 44 | 36054 | 2.77279 |
+| 32 | 14983 | 2.77421 |
+| 34 | 17670 | 2.77329 |
+| 36 | 20659 | 2.77267 |
+| 38 | 23966 | 2.77228 |
+| 40 | 27607 | 2.77207 |
+| 42 | 31598 | **2.77201** |
+| 44 | 35955 | 2.77207 |
 
-For `N=42`, rank `31630` gives the smallest exponent in the catalogue. For
-`N=44`, rank `36054` improves the exponent `2.77320` reported by Schwartz and
-Zwecher in [arXiv:2508.01748](https://arxiv.org/abs/2508.01748) to `2.77279`.
+For `N=42`, rank `31598` gives the smallest exponent in the catalogue. For
+`N=44`, rank `35955` improves the exponent `2.77320` reported by Schwartz and
+Zwecher in [arXiv:2508.01748](https://arxiv.org/abs/2508.01748) to `2.77207`.
 
 ## Repository Contents
 
-- `schemes/` contains the materialized rational decompositions.
-- `scripts/lita.py` constructs the even-dimensional LITA3 family.
+- `schemes/` contains the rational decompositions.
+- `scripts/lita.py` constructs the even-dimensional LITA family.
 - `scripts/verify.py` checks the catalogue by random matrix multiplication.
 - `src/scheme.h` defines sparse rational and prime-field schemes.
 - `src/reduce.h` implements sparse 2-reduction.
@@ -87,47 +85,33 @@ with np.load(path, allow_pickle=False) as npz:
     V = read_axis(npz, "v", R, N * N)
     W = read_axis(npz, "w", R, N * N)
 
+# C = A @ B
 A = np.random.normal(size=(N, N))
 B = np.random.normal(size=(N, N))
-C = np.einsum(
+C = np.einsum(               
     "qi,i,qj,j,qk->k",
     U, A.reshape(-1), V, B.reshape(-1), W,
     optimize=True,
 ).reshape(N, N)
-
-# C = A @ B
 ```
 
-## LITA3
+## LITA
 
-`scripts/lita.py` is a self-contained implementation of LITA3 for every even
-`N >= 18`. It combines Pan's lifted trilinear aggregation with three centered
-fields and a universal seven-product tensor. Every rational factor is emitted
-directly from closed formulas. NumPy is used only to write the compressed NPZ
-archive.
-
-```python
-from scripts.lita import lita3, lita3_rank
-
-print(lita3_rank(18))
-scheme = lita3(18)
-scheme.save("18x18x18_r3300.npz")
-```
-
-The generator can also be run directly:
+`scripts/lita.py` is a LITA construction for even
+`N >= 18`:
 
 ```bash
-python scripts/lita.py 18 18x18x18_r3300.npz
+python scripts/lita.py 22 schemes/22x22x22_r5518.npz
 ```
 
 Its rank is
 
 ```text
-R_even(N) = (4*N^3 + 45*N^2 + 116*N + 84)/12 - floor(9*N/4).
+R_even(N) = N^3/3 + 15*N^2/4 + 20*N/3 + 7.
 ```
 
-The catalogue also contains dimension-specific schemes whose ranks need not
-equal this uniform formula.
+This construction gives all even-dimensional schemes in `schemes/` except
+the scheme for `N=20`.
 
 ## Verification
 
@@ -141,8 +125,7 @@ python scripts/verify.py
 
 ## 2-Reducibility
 
-The following property was the main guide in searching for improvements to the
-construction.
+The following property was the main guide in searching for improvements to trilinear aggregation.
 
 ```text
 Let T = Σₜ uₜ⊗vₜ⊗wₜ, Xₜ = uₜ⊗vₜ and yₜ = wₜ.
@@ -151,12 +134,10 @@ In this case the p-th term can be removed: T = Σ_{t≠p} Xₜ⊗(yₜ + αₜy�
 ```
 
 A fast 2-reducibility check is implemented in `src/reduce.h`. It searches for
-linear dependencies among the `UV`, `UW`, or `VW` pair factors, lifts a
-single-prime certificate to small rational coefficients, and applies the
-resulting reduction to a rational scheme. The supporting header `src/scheme.h`
+linear dependencies among the `UV`, `UW`, or `VW` pair factors and applies the
+resulting reduction to a scheme. The supporting header `src/scheme.h`
 defines `SchemeQ` for rational coefficients and `SchemeP` for coefficients
-modulo a prime. The principal functions are
-`find_two_reductions()`, `lift_two_reductions()`, and `two_reduce()`.
+modulo a prime.
 
 This is a strict generalization of reducibility: every decomposition reducible in the sense of Kauers and Moosbauer [arXiv:2212.01175](https://arxiv.org/abs/2212.01175) is 2-reducible, but the converse does not hold. For example, consider
 
@@ -181,5 +162,4 @@ T = (1,0)×(1,0)×(3,2) + (0,1)×(0,1)×(2,3) + (1,−1)×(1,−1)×(0,−2).
 }
 ```
 
-An associated manuscript, *Local Improvements to Trilinear Aggregation*, is
-in preparation.
+An associated manuscript, *Local Improvements to Trilinear Aggregation*, is in preparation.
