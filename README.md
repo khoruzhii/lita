@@ -6,30 +6,23 @@ multiplication and their construction. The table lists the `⟨N×N×N : R⟩` s
 | N | rank R | ω |
 |---:|---:|---:|
 | 13 | 1420 | 2.82985 |
-| 19 | 4002 | 2.81702 |
+| 19 | 3981 | 2.81524 |
 | 20 | 4297 | 2.79253 |
-| 21 | 5183 | 2.80935 |
+| 21 | 5160 | 2.80789 |
 | 22 | 5518 | 2.78733 |
-| 23 | 6570 | 2.80347 |
+| 23 | 6545 | 2.80226 |
 | 24 | 6935 | 2.78294 |
-| 25 | 8180 | 2.79894 |
+| 25 | 8152 | 2.79788 |
 | 26 | 8574 | 2.77969 |
-| 27 | 10027 | 2.79536 |
+| 27 | 9997 | 2.79445 |
 | 28 | 10451 | 2.77728 |
-| 29 | 12128 | 2.79253 |
+| 29 | 12096 | 2.79174 |
 | 30 | 12582 | 2.77550 |
-| 31 | 14499 | 2.79029 |
+| 31 | 14465 | 2.78961 |
 | 32 | 14983 | 2.77421 |
-| 34 | 17670 | 2.77329 |
-| 36 | 20659 | 2.77267 |
-| 38 | 23966 | 2.77228 |
-| 40 | 27607 | 2.77207 |
 | 42 | 31598 | **2.77201** |
-| 44 | 35955 | 2.77207 |
 
-For `N=42`, rank `31598` gives the smallest exponent in the catalogue. For
-`N=44`, rank `35955` improves the exponent `2.77320` reported by Schwartz and
-Zwecher in [arXiv:2508.01748](https://arxiv.org/abs/2508.01748) to `2.77207`.
+For `N=42`, rank `31598` gives the smallest exponent and improves the `N=44` exponent `2.77320` reported by Schwartz and Zwecher in [arXiv:2508.01748](https://arxiv.org/abs/2508.01748) to `2.77201`.
 
 ## Repository Contents
 
@@ -66,7 +59,7 @@ The following example loads a scheme and uses it to multiply two matrices:
 import json
 import numpy as np
 
-path = "schemes/19x19x19_r4002.npz"
+path = "schemes/19x19x19_r3981.npz"
 
 def read_axis(npz, name, rows, cols):
     indptr = npz[f"{name}_indptr"]
