@@ -1,10 +1,5 @@
 """Explicit rational LITA schemes for even square matrix multiplication.
 
-This implementation uses the Walsh-simplex form of the fourth LITA
-construction. Pan's lifted trilinear aggregation is expressed through a source
-gauge and a residual simplex field acting on one Walsh coordinate. All factors
-are emitted directly from closed formulas, with no reduction passes.
-
 API:
     rank = lita_rank(N)
     scheme = lita(N)
@@ -59,7 +54,7 @@ def _raw_rank(N):
 
 def lita_rank(N):
     _check_dimension(N)
-    return _raw_rank(N) - 3 * N
+    return _raw_rank(N) - 7 * (N // 2) + 1
 
 
 def _add_scaled(row, other, scale):
@@ -260,20 +255,17 @@ def _lita_fields(N):
     d = D + 1
     source_fields = _diagonal_fields(N)
     source = _source_gauges(N, source_fields)
-    q = d - 4
-    eta = Fraction(d - 6, 2 * (d - 3))
-    section_rows = (
-        (Fraction(-1, d - 3), Fraction(-q, 2 * (d - 3)), 0, 0, 0),
-        (0, 0, 0, eta, 0),
-        (eta, 0, 0, 0, 0),
-    )
+    denominator = 2 * (d - 3)
+    a_row = tuple(Fraction(x, denominator) for x in (d - 10, -2 * (d - 8), d - 6))
+    bc_row = tuple(Fraction(x, denominator) for x in (-(d - 6), 0, d - 6))
+    section_rows = (a_row, bc_row, bc_row)
 
     result = []
     for axis in range(3):
-        ordinary = tuple(
-            _linear(source[axis].source_block(i, i), section_rows[axis])
-            for i in range(D)
-        )
+        ordinary = []
+        for i in range(D):
+            h = source[axis].walsh_block(i, i)
+            ordinary.append(_linear((h[0], h[1], h[3]), section_rows[axis]))
         result.append((source_fields[axis], _residual_field(d, ordinary)))
     return tuple(result)
 
@@ -375,13 +367,47 @@ def _local_heptad(gauges, i, d):
     yield from _heptad(*seeds, central=central)
 
 
-def _ordinary_local(gauges, i, d):
-    q = d - 4
-    A, B, C = (gauge.walsh_block(i, i) for gauge in gauges)
+# ---------- Pair-factor dependency ----------
+
+
+def _pair_field(gauges, d):
+    """Return psi with sum(psi[:-1]) = 0 and psi[-1] = 0."""
+    tail = tuple(gauges[A_AXIS].walsh_block(i, i)[1] for i in range(1, d - 1))
+    return (_scaled_form(_sum(tail), -1),) + tail + ({},)
+
+
+def _pair_cycle(field, i, j, k, barred, d):
+    numerator = 1 if barred else -(2 * d - 7)
+    return _scaled_form(_sum((field[i], field[j], field[k])), Fraction(numerator, d - 3))
+
+
+def _pair_mixed(field, i, j, k, barred, d):
+    weights = (d - 4, d - 4, -1 if barred else 2 * d - 7)
+    return _scaled_form(
+        _linear((field[i], field[j], field[k]), weights),
+        Fraction(1, d - 3),
+    )
+
+
+def _pair_off(field, i, j, d):
+    edge = _sum((field[i], field[j]))
+    minus_i = _scaled_form(field[i], -1)
+    minus_j = _scaled_form(field[j], -1)
+    corner = _scaled_form(edge, Fraction(d - 4, d - 3))
+    # Heptad order: e, a, b, c, a', b', c'.
+    return edge, minus_j, minus_i, _scaled_form(corner, -1), corner, minus_j, minus_i
+
+
+def _pair_local(gauges, d):
+    """Return the single ordinary-local product left by the pair dependency."""
+    A, B, C = gauges
+    A_local = _sum(tuple(A.walsh_block(i, i)[1] for i in range(d - 1)))
+    B_local = B.walsh_block(0, 0)
+    C_local = C.walsh_block(0, 0)
     return (
-        _linear((A[1], A[2]), (2, 2)),
-        _linear((B[0], B[2]), (2, -2)),
-        _linear((C[0], C[1], C[2]), (2 * q, 2 * (d - 6), -4)),
+        _scaled_form(A_local, -16 * (d - 8)),
+        _sum((B_local[0], B_local[1])),
+        _sum((C_local[0], C_local[1])),
     )
 
 
@@ -389,6 +415,8 @@ def _terms(N, gauges, reduced):
     D = N // 2
     d = D + 1
     M = N + 2
+    pair_field = _pair_field(gauges, d) if reduced else None
+    pair_scale = Fraction(d - 8, d - 4) if reduced else None
 
     for i in range(d):
         for j in range(d):
@@ -401,8 +429,14 @@ def _terms(N, gauges, reduced):
                         if not reduced:
                             yield factor, factor, factor
                         else:
+                            correction = _pair_cycle(
+                                pair_field, i, j, k, barred, d
+                            )
                             yield (
-                                _linear((factor, face[A_AXIS]), (1, -1)),
+                                _linear(
+                                    (factor, face[A_AXIS], correction),
+                                    (1, -1, pair_scale),
+                                ),
                                 _linear((factor, face[B_AXIS]), (1, -1)),
                                 _linear((factor, face[C_AXIS]), (1, -orbit)),
                             )
@@ -419,20 +453,41 @@ def _terms(N, gauges, reduced):
                     if not reduced:
                         yield u, v, w
                     else:
+                        correction = _pair_mixed(
+                            pair_field, i, j, k, barred, d
+                        )
                         yield (
-                            _linear((u, face[A_AXIS]), (1, 1)),
+                            _linear(
+                                (u, face[A_AXIS], correction),
+                                (1, 1, pair_scale),
+                            ),
                             _linear((v, face[B_AXIS]), (1, -1)),
                             _linear((w, face[C_AXIS]), (1, -orbit)),
                         )
 
     for i in range(d):
         for j in range(d):
-            if i != j:
+            if i == j:
+                if not reduced:
+                    yield from _local_heptad(gauges, i, d)
+                elif i == 0:
+                    yield _pair_local(gauges, d)
+                elif i == D:
+                    yield from _local_heptad(gauges, i, d)
+                continue
+
+            if not reduced:
                 yield from _off_heptad(gauges, i, j, d)
-            elif reduced and i < D:
-                yield _ordinary_local(gauges, i, d)
             else:
-                yield from _local_heptad(gauges, i, d)
+                corrections = _pair_off(pair_field, i, j, d)
+                for term, correction in zip(
+                    _off_heptad(gauges, i, j, d), corrections
+                ):
+                    yield (
+                        _linear((term[A_AXIS], correction), (1, pair_scale)),
+                        term[B_AXIS],
+                        term[C_AXIS],
+                    )
 
 
 def _family_terms(N, fields):
@@ -448,7 +503,7 @@ def _family_terms(N, fields):
 
 
 def _lifted_terms(N):
-    """Yield the final rank R0(N) - 3N identity before the Pan map."""
+    """Yield the final LITA identity before the Pan map."""
     _check_dimension(N)
     yield from _terms(N, _lita_gauges(N), reduced=True)
 

@@ -9,20 +9,20 @@ multiplication and their construction. The table lists the `⟨N×N×N : R⟩` s
 | 19 | 3981 | 2.81524 |
 | 20 | 4297 | 2.79253 |
 | 21 | 5160 | 2.80789 |
-| 22 | 5518 | 2.78733 |
+| 22 | 5508 | 2.78675 |
 | 23 | 6545 | 2.80226 |
-| 24 | 6935 | 2.78294 |
+| 24 | 6924 | 2.78244 |
 | 25 | 8152 | 2.79788 |
-| 26 | 8574 | 2.77969 |
+| 26 | 8562 | 2.77926 |
 | 27 | 9997 | 2.79445 |
-| 28 | 10451 | 2.77728 |
+| 28 | 10438 | 2.77690 |
 | 29 | 12096 | 2.79174 |
-| 30 | 12582 | 2.77550 |
+| 30 | 12568 | 2.77517 |
 | 31 | 14465 | 2.78961 |
-| 32 | 14983 | 2.77421 |
-| 42 | 31598 | **2.77201** |
+| 32 | 14968 | 2.77392 |
+| 42 | 31578 | **2.77184** |
 
-For `N=42`, rank `31598` gives the smallest exponent and improves the `N=44` exponent `2.77320` reported by Schwartz and Zwecher in [arXiv:2508.01748](https://arxiv.org/abs/2508.01748) to `2.77201`.
+For `N=42`, rank `31578` gives the smallest exponent and improves the `N=44` exponent `2.77320` reported by Schwartz and Zwecher in [arXiv:2508.01748](https://arxiv.org/abs/2508.01748) to `2.77184`.
 
 ## Repository Contents
 
@@ -94,13 +94,13 @@ C = np.einsum(
 `N >= 18`:
 
 ```bash
-python scripts/lita.py 22 schemes/22x22x22_r5518.npz
+python scripts/lita.py 22 schemes/22x22x22_r5508.npz
 ```
 
 Its rank is
 
 ```text
-R_even(N) = N^3/3 + 15*N^2/4 + 20*N/3 + 7.
+R_even(N) = N^3/3 + 15*N^2/4 + 37*N/6 + 8.
 ```
 
 This construction gives all even-dimensional schemes in `schemes/` except
