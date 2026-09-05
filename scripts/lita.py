@@ -54,7 +54,7 @@ def _raw_rank(N):
 
 def lita_rank(N):
     _check_dimension(N)
-    return _raw_rank(N) - 7 * (N // 2) + 1
+    return _raw_rank(N) - 7 * (N // 2)
 
 
 def _add_scaled(row, other, scale):
@@ -367,48 +367,83 @@ def _local_heptad(gauges, i, d):
     yield from _heptad(*seeds, central=central)
 
 
-# ---------- Pair-factor dependency ----------
+# ---------- Closed-field correction and rational center ----------
 
 
 def _pair_field(gauges, d):
-    """Return psi with sum(psi[:-1]) = 0 and psi[-1] = 0."""
-    tail = tuple(gauges[A_AXIS].walsh_block(i, i)[1] for i in range(1, d - 1))
-    return (_scaled_form(_sum(tail), -1),) + tail + ({},)
+    """Return z_i=(d-8)y_i/(d-4), closed by z_D=-sum(z_i)."""
+    scale = Fraction(d - 8, d - 4)
+    ordinary = tuple(
+        _scaled_form(gauges[A_AXIS].walsh_block(i, i)[1], scale)
+        for i in range(d - 1)
+    )
+    return ordinary + (_scaled_form(_sum(ordinary), -1),)
 
 
-def _pair_cycle(field, i, j, k, barred, d):
+def _pair_cycle(field, i, j, k, barred, d, feedback):
     numerator = 1 if barred else -(2 * d - 7)
-    return _scaled_form(_sum((field[i], field[j], field[k])), Fraction(numerator, d - 3))
-
-
-def _pair_mixed(field, i, j, k, barred, d):
-    weights = (d - 4, d - 4, -1 if barred else 2 * d - 7)
-    return _scaled_form(
-        _linear((field[i], field[j], field[k]), weights),
-        Fraction(1, d - 3),
+    incidence = 1 - (d - 2) * ((i == d - 1) + (j == d - 1) + (k == d - 1))
+    return _linear(
+        (_sum((field[i], field[j], field[k])), feedback),
+        (Fraction(numerator, d - 3), incidence),
     )
 
 
-def _pair_off(field, i, j, d):
+def _pair_mixed(field, i, j, k, barred, d, feedback):
+    weights = (d - 4, d - 4, -1 if barred else 2 * d - 7)
+    incidence = 1 - (d - 2) * ((i == d - 1) + (j == d - 1) + (k == d - 1))
+    result = _scaled_form(_linear((field[i], field[j], field[k]), weights),
+                          Fraction(1, d - 3))
+    return _add_scaled(result, feedback, -incidence)
+
+
+def _pair_off(field, i, j, d, feedback):
     edge = _sum((field[i], field[j]))
     minus_i = _scaled_form(field[i], -1)
     minus_j = _scaled_form(field[j], -1)
-    corner = _scaled_form(edge, Fraction(d - 4, d - 3))
-    # Heptad order: e, a, b, c, a', b', c'.
+    incidence = Fraction(2, d) - (d - 2) * ((i == d - 1) + (j == d - 1))
+    corner = _linear((edge, feedback), (Fraction(d - 4, d - 3), -incidence))
     return edge, minus_j, minus_i, _scaled_form(corner, -1), corner, minus_j, minus_i
 
 
-def _pair_local(gauges, d):
-    """Return the single ordinary-local product left by the pair dependency."""
-    A, B, C = gauges
-    A_local = _sum(tuple(A.walsh_block(i, i)[1] for i in range(d - 1)))
-    B_local = B.walsh_block(0, 0)
-    C_local = C.walsh_block(0, 0)
-    return (
-        _scaled_form(A_local, -16 * (d - 8)),
-        _sum((B_local[0], B_local[1])),
-        _sum((C_local[0], C_local[1])),
-    )
+def _rational_center(gauges, d, total):
+    """Return feedback G and seven products; total is the sum of ordinary z_i."""
+    q = Fraction
+    A, B, C = (g.walsh_block(d - 1, d - 1)[:4] for g in gauges)
+    a = A + (total,)
+    denominator = 2 * (d - 6) * (d - 3) * (d * d - 2 * d - 1)
+    feedback = _scaled_form(_linear(a, (
+        (d - 2) * (d - 3), (d - 12) * (d - 3), d * d - 9 * d + 36,
+        (d - 6) * (d - 3), (d - 6) * (2 * d - 11),
+    )), q(d, denominator))
+    h = d * d - 3 * d - 6
+    U = _linear(a + (feedback,), (
+        q(8 * h, d - 6), q(-48 * (d - 3), d - 6),
+        q(8 * (d * d - 6 * d + 18), d - 6), 24,
+        q(4 * h, d - 3), -8 * (3 * d - 7),
+    ))
+    V = _linear((U, A[1], A[2], total), (1,) + (-8 * (d - 6),) * 3)
+    P = _scaled_form(_linear((A[1], A[2], total), (d - 6, d - 6, -3)),
+                     q(8 * d, d - 3))
+    mu = q(d * d - 8 * d + 9, d * (d - 6))
+    vC = _linear(a, (0, 24, -8 * (d - 3), 0, -4 * (d - 6)))
+    vB = _linear(a, (0, -8 * (d - 3), 24, 0, -4 * (d - 6)))
+    alpha = q(d * d - 8 * d + 6, (d - 3) * (d - 6))
+    beta = q(d * d - 9 * d + 9, (d - 3) * (d - 6))
+    eta, theta = q(d - 3, d - 6), q(d - 2, d - 6)
+    first = (U, V, P, vC, _linear((A[0], vC), (1, q(-1, 8 * d))),
+             vB, _linear((A[0], vB), (1, q(1, 8 * d))))
+    second = _seed_forms(B, (
+        (1, -mu, -mu, 0), (0, 1, 1, 0), (1, 0, 1, 0),
+        (1, q(-(d - 3), d), q(3, d), 0), (0, -8 * (d - 3), 24, 0),
+        (alpha, -eta, -beta, 1), (theta, 0, 0, 1),
+    ))
+    third = _seed_forms(C, (
+        (0, 1, 1, 0), (1, mu, mu, 0), (1, 1, 0, 0),
+        (alpha, beta, eta, 1), (theta, 0, 0, 1),
+        (1, q(-3, d), q(d - 3, d), 0), (0, 24, -8 * (d - 3), 0),
+    ))
+    return feedback, tuple(zip(first, second, third))
 
 
 def _terms(N, gauges, reduced):
@@ -416,7 +451,9 @@ def _terms(N, gauges, reduced):
     d = D + 1
     M = N + 2
     pair_field = _pair_field(gauges, d) if reduced else None
-    pair_scale = Fraction(d - 8, d - 4) if reduced else None
+    if reduced:
+        total = _scaled_form(pair_field[-1], -1)
+        feedback, center = _rational_center(gauges, d, total)
 
     for i in range(d):
         for j in range(d):
@@ -430,12 +467,12 @@ def _terms(N, gauges, reduced):
                             yield factor, factor, factor
                         else:
                             correction = _pair_cycle(
-                                pair_field, i, j, k, barred, d
+                                pair_field, i, j, k, barred, d, feedback
                             )
                             yield (
                                 _linear(
                                     (factor, face[A_AXIS], correction),
-                                    (1, -1, pair_scale),
+                                    (1, -1, 1),
                                 ),
                                 _linear((factor, face[B_AXIS]), (1, -1)),
                                 _linear((factor, face[C_AXIS]), (1, -orbit)),
@@ -454,12 +491,12 @@ def _terms(N, gauges, reduced):
                         yield u, v, w
                     else:
                         correction = _pair_mixed(
-                            pair_field, i, j, k, barred, d
+                            pair_field, i, j, k, barred, d, feedback
                         )
                         yield (
                             _linear(
                                 (u, face[A_AXIS], correction),
-                                (1, 1, pair_scale),
+                                (1, 1, 1),
                             ),
                             _linear((v, face[B_AXIS]), (1, -1)),
                             _linear((w, face[C_AXIS]), (1, -orbit)),
@@ -470,21 +507,19 @@ def _terms(N, gauges, reduced):
             if i == j:
                 if not reduced:
                     yield from _local_heptad(gauges, i, d)
-                elif i == 0:
-                    yield _pair_local(gauges, d)
                 elif i == D:
-                    yield from _local_heptad(gauges, i, d)
+                    yield from center
                 continue
 
             if not reduced:
                 yield from _off_heptad(gauges, i, j, d)
             else:
-                corrections = _pair_off(pair_field, i, j, d)
+                corrections = _pair_off(pair_field, i, j, d, feedback)
                 for term, correction in zip(
                     _off_heptad(gauges, i, j, d), corrections
                 ):
                     yield (
-                        _linear((term[A_AXIS], correction), (1, pair_scale)),
+                        _linear((term[A_AXIS], correction), (1, 1)),
                         term[B_AXIS],
                         term[C_AXIS],
                     )
@@ -605,12 +640,15 @@ class Scheme:
             "format": "fmmp.qcsr.v1",
             "rank": self.rank,
             "tensor": [self.N, self.N, self.N],
+            "is_complete_matrix_multiplication_scheme": True,
+            "axis_convention": "U,V read row-major inputs; W writes row-major C=AB.",
+            "construction": "LITA rational central replacement",
         }, separators=(",", ":")))
         np.savez_compressed(path, **arrays)
 
 
 def lita(N):
-    """Construct the Walsh-simplex LITA scheme over Q."""
+    """Construct the centrally reduced Walsh-simplex LITA scheme over Q."""
     _check_dimension(N)
     scheme = Scheme(N)
     for u, v, w in _lifted_terms(N):
