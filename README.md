@@ -6,23 +6,26 @@ multiplication and their construction. The table lists the `⟨N×N×N : R⟩` s
 | N | rank R | ω |
 |---:|---:|---:|
 | 13 | 1420 | 2.82985 |
+| 14 | 1639 | 2.80473 |
+| 16 | 2290 | 2.79028 |
+| 18 | 3094 | 2.78069 |
 | 19 | 3981 | 2.81524 |
-| 20 | 4297 | 2.79253 |
+| 20 | 4067 | 2.77417 |
 | 21 | 5160 | 2.80789 |
-| 22 | 5507 | 2.78669 |
+| 22 | 5225 | 2.76968 |
 | 23 | 6545 | 2.80226 |
-| 24 | 6923 | 2.78240 |
+| 24 | 6584 | 2.76660 |
 | 25 | 8152 | 2.79788 |
-| 26 | 8561 | 2.77922 |
+| 26 | 8160 | 2.76450 |
 | 27 | 9997 | 2.79445 |
-| 28 | 10437 | 2.77687 |
+| 28 | 9969 | 2.76311 |
 | 29 | 12096 | 2.79174 |
-| 30 | 12567 | 2.77515 |
+| 30 | 12027 | 2.76224 |
 | 31 | 14465 | 2.78961 |
-| 32 | 14967 | 2.77390 |
-| 42 | 31577 | **2.77183** |
+| 32 | 14350 | 2.76175 |
+| 34 | 16954 | **2.76156** |
 
-For `N=42`, rank `31577` gives the smallest exponent and improves the `N=44` exponent `2.77320` reported by Schwartz and Zwecher in [arXiv:2508.01748](https://arxiv.org/abs/2508.01748) to `2.77183`.
+For `N=34`, rank `16954` gives the smallest exponent  and improves the `N=44` exponent `2.77320` reported by Schwartz and Zwecher in [arXiv:2508.01748](https://arxiv.org/abs/2508.01748) to `2.76156`.
 
 ## Repository Contents
 
@@ -71,7 +74,7 @@ def read_axis(npz, name, rows, cols):
     return axis
 
 with np.load(path, allow_pickle=False) as npz:
-    metadata = json.loads(str(npz["metadata_json"].tolist()))
+    metadata = json.loads(npz["metadata_json"].item())
     N = metadata["tensor"][0]
     R = metadata["rank"]
     U = read_axis(npz, "u", R, N * N)
@@ -81,7 +84,7 @@ with np.load(path, allow_pickle=False) as npz:
 # C = A @ B
 A = np.random.normal(size=(N, N))
 B = np.random.normal(size=(N, N))
-C = np.einsum(               
+C = np.einsum(
     "qi,i,qj,j,qk->k",
     U, A.reshape(-1), V, B.reshape(-1), W,
     optimize=True,
@@ -91,20 +94,19 @@ C = np.einsum(
 ## LITA
 
 `scripts/lita.py` is a LITA construction for even
-`N >= 18`:
+`N ≥ 4`:
 
 ```bash
-python scripts/lita.py 22 schemes/22x22x22_r5507.npz
+python scripts/lita.py 22 schemes/22x22x22_r5225.npz
 ```
 
 Its rank is
 
 ```text
-R_even(N) = N^3/3 + 15*N^2/4 + 37*N/6 + 7.
+R_even(N) = N^3/3 + 25*N^2/8 + 77*N/12 + 22.
 ```
 
-This construction gives all even-dimensional schemes in `schemes/` except
-the scheme for `N=20`.
+This construction gives all even-dimensional schemes in `schemes/`.
 
 ## Verification
 
