@@ -1,31 +1,30 @@
 # Local Improvements to Trilinear Aggregation
 
-This repository contains explicit rational schemes for square matrix
-multiplication and their construction. The table lists the `⟨N×N×N : R⟩` schemes in `schemes/` with exponent `ω = log_N R`.
+This repository contains rational schemes for square matrix multiplication and their construction. These constructions build on Victor Pan’s trilinear aggregation techniques ([1978](https://doi.org/10.1109/SFCS.1978.34), [1982](https://doi.org/10.1016/0898-1221(82)90037-2)). The table lists the `⟨N×N×N : R⟩` schemes in `schemes/` with exponent `ω = log_N R`.
 
 | N | rank R | ω |
 |---:|---:|---:|
 | 13 | 1420 | 2.82985 |
-| 14 | 1639 | 2.80473 |
-| 16 | 2290 | 2.79028 |
-| 18 | 3094 | 2.78069 |
+| 14 | 1604 | 2.79655 |
+| 16 | 2248 | 2.78361 |
+| 18 | 3044 | 2.77505 |
 | 19 | 3981 | 2.81524 |
-| 20 | 4067 | 2.77417 |
+| 20 | 4008 | 2.76929 |
 | 21 | 5160 | 2.80789 |
-| 22 | 5225 | 2.76968 |
+| 22 | 5156 | 2.76538 |
 | 23 | 6545 | 2.80226 |
-| 24 | 6584 | 2.76660 |
+| 24 | 6504 | 2.76275 |
 | 25 | 8152 | 2.79788 |
-| 26 | 8160 | 2.76450 |
+| 26 | 8068 | 2.76102 |
 | 27 | 9997 | 2.79445 |
-| 28 | 9969 | 2.76311 |
+| 28 | 9864 | 2.75993 |
 | 29 | 12096 | 2.79174 |
-| 30 | 12027 | 2.76224 |
+| 30 | 11908 | 2.75931 |
 | 31 | 14465 | 2.78961 |
-| 32 | 14350 | 2.76175 |
-| 34 | 16954 | **2.76156** |
+| 32 | 14216 | 2.75905 |
+| 34 | 16804 | **2.75904** |
 
-For `N=34`, rank `16954` gives the smallest exponent  and improves the `N=44` exponent `2.77320` reported by Schwartz and Zwecher in [arXiv:2508.01748](https://arxiv.org/abs/2508.01748) to `2.76156`.
+For `N=34`, rank `16804` gives the smallest exponent in this catalogue and improves the `N=44` exponent `2.77320` reported by Schwartz and Zwecher in [arXiv:2508.01748](https://arxiv.org/abs/2508.01748) to `2.75904`.
 
 ## Repository Contents
 
@@ -94,16 +93,16 @@ C = np.einsum(
 ## LITA
 
 `scripts/lita.py` is a LITA construction for even
-`N ≥ 4`:
+`N ≥ 8`:
 
 ```bash
-python scripts/lita.py 22 schemes/22x22x22_r5225.npz
+python scripts/lita.py 22 schemes/22x22x22_r5156.npz
 ```
 
 Its rank is
 
 ```text
-R_even(N) = N^3/3 + 25*N^2/8 + 77*N/12 + 22.
+R_even(N) = N^3/3 + 3*N^2 + 20*N/3 + 8.
 ```
 
 This construction gives all even-dimensional schemes in `schemes/`.
