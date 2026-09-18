@@ -1,6 +1,8 @@
 """
 Rational LITA schemes for even square matrix multiplication.
 
+R(N) = N^3/3 + 3*N^2 + 20*N/3 + 7.
+
 API:
     rank = lita_rank(N)
     scheme = lita(N)
@@ -30,7 +32,7 @@ def _check_dimension(N):
 def lita_rank(N):
     _check_dimension(N)
     D = N // 2
-    return 16*(D+1)*D*(D-1)//6 + 12*D*(D-1) + 28*D + 8
+    return 16*(D+1)*D*(D-1)//6 + 12*D*(D-1) + 28*D + 7
 
 
 def _add_scaled(row, other, scale):
@@ -91,77 +93,88 @@ class _Form(dict):
         return result
 
 
-def _basis(size):
-    return tuple(_Form({i: 1}) for i in range(size))
-
-
-# ---------- Weighted closed blocks ----------
+# ---------- Signed blocks and row-column parameters ----------
 
 
 class _Coordinates:
-    """Ordinary vertices have weight 1, the closing vertex has weight 2-D.
+    """Forms in original row-major coordinates, stored as grid*F.
 
-    The total weight is 2. Forms store K*F, K=6*(D-2)*(D-3). Every division is exact.
-    Projection and fraction reduction happen once, at serialization.
+    The grid covers the border denominator 4*(D-2)^2, the half-sums,
+    and the boundary/center denominator D-3. All divisions are exact.
     """
 
     def __init__(self, N):
         self.N, self.D = N, N // 2
         self.w = 2-self.D
-        self.grid = 6*(self.D-2)*(self.D-3)
-        self.traces = tuple(_sum(self.entry(b, i, i) for i in range(self.D))
-                            for b in range(4))
-
-    def shared(self, block):
-        """Original block sum and trace, expressed in lifted coordinates."""
-        closing = self.w*self.entry(block, self.D, self.D)
-        return 2*closing, self.traces[block]+closing
-
-    def entry(self, block, i, j):
-        br, bc = divmod(block, 2)
-        d = self.D+1
-        return _Form({(br*d+i)*(self.N+2)+bc*d+j: self.grid})
+        self.grid = 8*(self.D-2)**2*(self.D-3)
+        self._entries = {}
 
     def weight(self, i):
         return self.w if i == self.D else 1
 
-    def edge(self, i, j):
-        diagonal = tuple(self.entry(b, v, v) for v in (i, j) for b in range(4))
-        cross = tuple(self.entry(b, u, v) for b in range(4)
-                      for u, v in ((i, j), (j, i)))
-        return diagonal + cross
+    def entry(self, block, i, j):
+        key = block, i, j
+        if key not in self._entries:
+            D, N = self.D, self.N
+            br, bc = divmod(block, 2)
+            if i < D and j < D:
+                value = self.grid * (-1 if bc else 1)
+                result = _Form({(br*D+i)*N+bc*D+j: value})
+            elif i < D:
+                result = _sum(self.entry(2*br+b, i, k)
+                              for b in range(2) for k in range(D))/(2*(D-2))
+            elif j < D:
+                result = _sum(self.entry(2*a+bc, k, j)
+                              for a in range(2) for k in range(D))/(2*(D-2))
+            else:
+                result = _sum(self.entry(b, r, s) for b in range(4)
+                              for r in range(D) for s in range(D))/(4*(D-2)**2)
+            self._entries[key] = result
+        return self._entries[key]
 
 
-_BLOCK_SIGNS = ((1, 1, 1, 1), (-1, 1, 1, -1), (-1, 1, -1, 1))
-
-
-class _BlockView:
-    """Signed blocks with a weighted-zero-sum diagonal field."""
+class _View:
+    """One input's final parameters; A and B agree, C closes differently."""
 
     def __init__(self, coordinates, axis):
         self.coordinates = coordinates
-        self.signs = _BLOCK_SIGNS[axis]
-        self.D, self.axis = coordinates.D, axis
-        sums, traces = zip(*(coordinates.shared(b) for b in range(4)))
-        x, y, z = self.signs[0]*traces[0], self.signs[3]*traces[3], self.signs[3]*sums[3]
-        fixed, moving = (y, x) if axis == 2 else (x, y)
-        self.common = (2*fixed+(self.D-4)*moving-z)/(2*(self.D-2))
-        self.step = moving/(self.D-2)
-        self.heptad = (2*fixed-z)/(2*(self.D-2))
-        self.difference = x-y
-
-    def face(self, i, j, k):
-        closing = (i == self.D)+(j == self.D)+(k == self.D)
-        return self.common+closing*self.step
+        self.D = D = coordinates.D
+        X = coordinates.entry
+        self.r0 = [X(0,i,i)+X(2,i,i) for i in range(D)]
+        self.r0.append(_sum(self.r0)/(D-2))
+        self.c0 = [X(2,i,i) for i in range(D)]
+        self.c1 = [X(3,i,i) for i in range(D)]
+        closing_sum = _sum(self.c0+self.c1)/(D-2)
+        closing_c0 = (closing_sum-X(3,D,D) if axis == 2
+                      else self.r0[D]-X(0,D,D))
+        self.c0.append(closing_c0)
+        self.c1.append(closing_sum-closing_c0)
+        self._entries = {}
+        # Half-sums include the row-column parameters.
+        self.row_sums = {b: tuple(_sum(coordinates.weight(k)*self.entry(b,j,k)
+                                     for k in range(D+1)) for j in range(D+1))
+                         for b in (0,3)}
+        self.column_sums = {b: tuple(_sum(coordinates.weight(k)*self.entry(b,k,i)
+                                        for k in range(D+1)) for i in range(D+1))
+                            for b in (0,3)}
 
     def entry(self, block, i, j):
-        return self.signs[block]*self.coordinates.entry(block, i, j)
+        key = block, i, j
+        if key not in self._entries:
+            X = self.coordinates.entry(block,i,j)
+            if block == 0:
+                result = X-self.r0[i]+self.c0[j]
+            elif block == 1:
+                result = X+self.r0[i]+self.c1[j]
+            elif block == 2:
+                result = X-self.c0[j]
+            else:
+                result = X-self.c1[j]
+            self._entries[key] = result
+        return self._entries[key]
 
-    def diagonal(self, block, i):
-        if i == self.D:
-            C = self.coordinates
-            return -self.signs[block]*_Form(C.traces[block])/C.w
-        return self.entry(block, i, i)
+    def half_sum(self, block, i, j):
+        return (self.row_sums[block][j]+self.column_sums[block][i])/2
 
 
 # ---------- One weighted aggregation identity ----------
@@ -169,223 +182,130 @@ class _BlockView:
 
 def _cycle(view, i, j, k, barred):
     b = 3*barred
-    return view.signs[b]*(_sum(view.entry(b, u, v) for u, v in ((i,j),(j,k),(k,i)))
-                          - _sum(view.diagonal(b, v) for v in (i,j,k)) + view.face(i,j,k))
+    return _sum(view.entry(b,u,v) for u,v in ((i,j),(j,k),(k,i)))
 
 
 def _mixed(view, i, j, k, barred):
-    Y, z = view.entry, view.diagonal
-    u, v = (j, i) if barred else (i, j)
-    b = 3*barred
-    return (Y(2-barred, j, k) + Y(1+barred, k, i) - Y(b, i, j)
-            + z(0, u) + z(2, u) + z(3, u) - z(2, v) + z(b, k) - view.face(i,j,k))
+    X = view.entry
+    return X(2-barred,j,k)+X(1+barred,k,i)-X(3*barred,i,j)
 
 
 def _mixed_factors(views, i, j, k, barred):
-    A, B, C = views
-    return (_mixed(A, i, j, k, barred), _mixed(B, k, i, j, barred),
-            (-1 if barred else 1)*_mixed(C, j, k, i, barred))
+    A,B,C = views
+    return (_mixed(A,i,j,k,barred), _mixed(B,k,i,j,barred),
+            (-1 if barred else 1)*_mixed(C,j,k,i,barred))
 
 
 def _weighted(term, coordinates, ids):
-    return tuple(_scaled_form(f, coordinates.weight(i)) for f, i in zip(term, ids))
+    return tuple(f*coordinates.weight(i) for f,i in zip(term,ids))
 
 
-def _triangle_terms(coordinates):
-    views = tuple(_BlockView(coordinates, a) for a in range(3))
-    for vertices in combinations(range(coordinates.D+1), 3):
-        for i, j, k in permutations(vertices):
-            for barred in (0, 1):
+def _cyclic(recipes):
+    """Rotate recipes first, evaluating each in its destination input."""
+    for shift in range(3):
+        yield tuple(recipes[a][(a+shift)%3] for a in range(3))
+
+
+def _triangle_terms(coordinates, views):
+    for vertices in combinations(range(coordinates.D+1),3):
+        for i,j,k in permutations(vertices):
+            for barred in (0,1):
                 if i < j < k or k < j < i:
-                    term = tuple(_cycle(v, i, j, k, barred) for v in views)
-                    yield _weighted(term, coordinates, (i,j,k))
-                yield _weighted(_mixed_factors(views, i, j, k, barred), coordinates, (i,j,k))
+                    term = [_cycle(v,i,j,k,barred) for v in views]
+                    term[2] = (-1 if barred else 1)*term[2]
+                    yield _weighted(term,coordinates,(i,j,k))
+                yield _weighted(_mixed_factors(views,i,j,k,barred),coordinates,(i,j,k))
 
 
-# ---------- Six fixed edge pairs and their reflections ----------
+def _seeds(view, i, j):
+    x0,x1,x2,x3 = (view.entry(b,i,j) for b in range(4))
+    return (x3-x0, -x2-x3, -x1-x3,
+            x0+view.half_sum(3,i,j), -x3-view.half_sum(0,i,j))
 
 
-def _edge_half(x):
-    """Six fixed pairs; h and t carry the two shared additions."""
-    h, t = x[16:]
-    a, b, c, e = x[:4]
-    A, B, C, E = x[4:8]
-    p, P, q, Q, r, R, s, S = x[8:16]
-
-    u = a+c-p-r
-    v = c-e-A+B+2*C-2*E-P+Q-r+s
-    yield u, v, -a+C+p-R+h
-    yield u, v+2*P+t, -C+E-p+q
-
-    u = c+e-R-S
-    w = a+c-B-E+P-q+R-s
-    yield u, -e+A-2*C-Q+r+2*S+h, w
-    yield u, A-C-Q+S, -2*(w+s)-t
-
-    v = -C+E+r-s
-    u = 2*a+b+2*c+e+A+C-p+Q-r+S
-    yield u, v, -a+E+q-R+h
-    yield -2*S-t, v, -a-c+q+s
-
-    v = a-c-p+r
-    yield C+E+p+q, v, -2*P+t
-    yield a+E+q+R-h, v, c-e+A-B+P-Q+r-s
-
-    w = -c+e+R-S
-    u = A+C+Q+S
-    v = a-c-B+E+P-q-R+s
-    yield u, -2*(v+s)-t, w
-    yield 2*u+e+A+Q+r-h, v, w
-
-    w = A+C-P-R
-    yield -a-b-C-E-p-q-R-S, -e-A+Q+r+h, w
-    yield -2*p-t, -c+e+P-Q, w
+def _heptad(seeds):
+    yield tuple(h[0] for h in seeds)
+    yield from _cyclic(tuple((h[1],h[2],h[3]) for h in seeds))
+    yield from _cyclic(tuple((h[4],-h[0]-h[2],-h[0]-h[1]) for h in seeds))
 
 
-def _edge_recipe():
-    x = _basis(18)
-    reverse = x[4:8] + x[:4] + tuple(x[j] for i in range(8,16,2) for j in (i+1,i)) + x[16:]
-    direct, reflected = tuple(_edge_half(x)), tuple(_edge_half(reverse))
-    for pair in range(6):
-        for half in (direct, reflected):
-            yield from half[2*pair:2*pair+2]
+# ---------- Eight cyclic ordinary-edge prototypes ----------
 
 
-def _edge_terms(coordinates):
-    recipe = tuple(_edge_recipe())
-    views = tuple(_BlockView(coordinates, a) for a in range(3))
-    shared = tuple((v.signs[0]*v.common,
-                    (1 if a == 2 else v.signs[3])*(coordinates.D-2)*v.step)
-                   for a,v in enumerate(views))
+def _edge_forms(view, i, j):
+    X = view.coordinates.entry
+    forms = []
+    for r,s in ((i,j),(j,i)):
+        forms.extend((
+            X(2,s,s)+X(3,s,s)-X(2,r,s)-X(3,r,s),
+            X(0,r,r)+X(2,r,r)-X(0,r,s)-X(2,r,s),
+            X(0,r,r)+X(3,s,s)+X(1,r,s)+X(2,s,r),
+            X(1,r,r)+X(2,s,s)+X(0,r,s)+X(3,s,r),
+            2*(X(3,s,r)-view.c1[r]-view.half_sum(3,r,s)),
+            2*(X(0,s,r)-view.r0[s]+view.c0[r]-view.half_sum(0,r,s))))
+    forms.append(X(2,i,i)+X(2,j,j)-X(2,i,j)-X(2,j,i))
+    return (None,)+tuple(forms)
+
+
+def _edge_recipe(l):
+    return ((l[1],l[3]+l[13]-l[1],l[5]),
+            (-l[1],l[3],l[4]+l[9]),
+            (-l[2],l[6],l[3]+l[13]-l[2]),
+            (l[2],l[10]+l[9],l[3]),
+            (l[7],l[9]+l[13]-l[7],l[11]),
+            (-l[7],l[9],l[10]+l[3]),
+            (-l[8],l[12],l[9]+l[13]-l[8]),
+            (l[8],l[4]+l[3],l[9]))
+
+
+def _edge_terms(coordinates, views):
     for i,j in combinations(range(coordinates.D),2):
-        local = coordinates.edge(i,j)
-        bases = tuple(local+f for f in shared)
-        for term in recipe:
-            yield tuple(_Form(_linear((bases[a][k] for k in f),f.values()))
-                        for a,f in enumerate(term))
+        recipes = tuple(_edge_recipe(_edge_forms(v,i,j)) for v in views)
+        for r in range(8):
+            yield from _cyclic(tuple(recipe[r] for recipe in recipes))
 
 
 # ---------- Boundary edges and the closing vertex ----------
 
 
-def _edge_seeds(view, i, j):
-    x = tuple(view.diagonal(b,i) for b in range(4))
-    y = tuple(view.diagonal(b,j) for b in range(4))
-    p = tuple(view.entry(b,i,j) for b in range(4))
-    return (x[0]+x[2]-y[2]-y[3]-p[0]+p[3],
-            y[2]+y[3]-p[2]-p[3], -x[0]-x[2]-p[1]-p[3],
-            y[2]-x[0]-x[2]-x[3]+p[0]+view.heptad,
-            y[0]+y[2]+y[3]-x[2]-p[3]-view.heptad)
-
-
-
-def _heptad(seeds):
-    """Five forms generate seven products; the last two forms are dependent."""
-    expanded = []
-    for e, a, b, c, ap in seeds:
-        expanded.append((e, a, b, c, ap, -e-b, -e-a))
-    A, B, C = expanded
-    yield A[0], B[0], C[0]
-    for start in (1, 4):
-        for offset in range(3):
-            i, j, k = (start + (offset+t) % 3 for t in range(3))
-            yield A[i], -B[j], -C[k]
-
-
-def _boundary_terms(coordinates):
-    views = tuple(_BlockView(coordinates,a) for a in range(3))
-    D, w = coordinates.D, coordinates.w
+def _boundary_terms(coordinates, views):
+    D,w = coordinates.D,coordinates.w
     for i in range(D):
-        for barred in (0,1):
-            row = [_cycle(v,i,i,D,barred) for v in views]
-            if not barred:
-                # Balance the merged product before projection.
-                for a in (0,1):
-                    row[a] = (D-3)*row[a]-views[a].signs[0]*views[a].difference
-                row[2] = -w*row[2]/(D-3)
-            else:
-                # Only the first two axes need coincide in order to merge.
-                row[2] = w*((1+w)*row[2]-views[2].difference)
-            yield tuple(row)
+        f = tuple(_cycle(v,i,i,D,0) for v in views)
+        g = tuple(_cycle(v,D,D,i,0) for v in views)
+        if f[:2] != g[:2]:
+            raise ArithmeticError("block-0 boundary alignment failed")
+        yield f[0],f[1],w*f[2]+w*w*g[2]
+        f = tuple(_cycle(v,i,i,D,1) for v in views)
+        g = tuple(_cycle(v,D,D,i,1) for v in views)
+        if f[2] != g[2]:
+            raise ArithmeticError("block-3 boundary alignment failed")
+        yield f[0]+w*g[0],f[1]+w*g[1],(-w*f[2])/(1+w)
         for ids in ((i,i,D),(i,D,i),(i,D,D),(D,i,i),(D,i,D),(D,D,i)):
             for barred in (0,1):
                 yield _weighted(_mixed_factors(views,*ids,barred),coordinates,ids)
         for left,right in ((i,D),(D,i)):
-            seeds = tuple(_edge_seeds(v,left,right) for v in views)
-            for u,v,z in _heptad(seeds):
-                yield coordinates.weight(left)*u, coordinates.weight(right)*v, 2*z
+            for u,v,z in _heptad(tuple(_seeds(view,left,right) for view in views)):
+                yield coordinates.weight(left)*u,coordinates.weight(right)*v,2*z
 
 
-def _shared_basis(N, scale):
-    D=N//2
-    sums,traces=[],[]
-    for b in range(4):
-        br,bc=divmod(b,2)
-        sums.append(_Form({(br*D+i)*N+bc*D+j:scale for i in range(D) for j in range(D)}))
-        traces.append(_Form({(br*D+i)*N+bc*D+i:scale for i in range(D)}))
-    return tuple(sums+traces)
+def _center_terms(coordinates, views):
+    D,w = coordinates.D,coordinates.w
+    seeds = tuple(_seeds(v,D,D) for v in views)
+    h0,h1,h2,h3,h4 = seeds[2]
+    yield (w*w*seeds[0][0],seeds[1][0],
+           (w*(5-D)*h0+3*w*(3-D)*(h1+h2)-2*h3)/(3-D))
+    unprimed,primed = [],[]
+    for h0,h1,h2,h3,h4 in seeds:
+        total = h0+h1+h2
+        unprimed.append((h1,h2,2*h3-w*total))
+        primed.append((2*h4+w*total,-h0-h2,-h0-h1))
+    for recipes in (unprimed,primed):
+        for u,v,z in _cyclic(recipes):
+            yield w*w*u,v,z
 
 
-def _center_raw(bases,D):
-    """Four transformed aggregates, three heptad terms, one mixed correction."""
-    a,b,c = bases
-    def modes(x, sign):
-        S0,S1,S2,S3,T0,T1,T2,T3=x
-        return ((4*T0-(D+2)*T3+S3)/2,
-                (S1+S2+sign*(S0-2*T0+D*T3))/2,
-                (S3-(D-4)*T3-2*T0)/2,
-                (S1+S2+sign*(S0+(D-2)*T3))/2)
-    aa,bb=modes(a,1),modes(b,-1)
-    yield aa[0]/3, bb[0], -(D-4)*c[4]/2+c[7]-c[3]/2
-    yield aa[1], bb[1], (c[1]-c[2]-c[0]-(D-2)*c[4])/2
-    yield aa[2]/3, bb[2], (c[3]+(D+2)*c[4]+4*c[7])/2
-    yield aa[3], bb[3], (c[2]-c[1]+c[0]+D*c[4])/2+c[7]
-    yield (a[0]-a[3])/2, b[6]-b[7]+(b[3]+b[0]-b[2]-b[1])/2, -2*(c[4]+c[6])/(D-2)
-    yield -a[7]-a[6]+(a[3]+a[0]+a[2]+a[1])/2, b[4]-b[6], -(c[3]+c[0])/(D-2)
-    yield a[4]+a[6], (b[0]-b[3])/2, (-2*c[7]+c[3]-c[0]+2*c[6]-c[2]+c[1])/(D-2)
-    # Place each denominator on a trace factor, not on the polynomial row.
-    n=((D-2)*(D-8)*c[4]-6*(D-2)*c[7]+2*c[0]+D*c[3])/2
-    yield (a[4]-a[7])/(D-3), (-b[4]+b[7])/(D-2), n
-
-
-# ---------- Weighted projection and sparse serialization ----------
-
-
-def _project(form, N):
-    """Project K*F using L=[I;-1.T/w] and R=[I-J/2,-1/2].
-
-    For Lambda=diag(1,...,1,w), R*Lambda*L=I. The closing row
-    coefficients are divisible by w. The final numerators are integral on K=6*(D-2)*(D-3).
-    """
-    D, d, M, weight = N//2, N//2+1, N+2, 2-N//2
-    result, row_sums = {}, {}
-    for index, value in form.items():
-        row, column = divmod(index,M)
-        br,i = divmod(row,d)
-        bc,j = divmod(column,d)
-        totals = row_sums.setdefault((br,bc),{})
-        if i == D:
-            value,remainder = divmod(value,weight)
-            if remainder:
-                raise ArithmeticError("nonintegral closing-row projection")
-        totals[i] = totals.get(i,0)+value
-        if j < D:
-            rows = ((i,1),) if i < D else ((k,-1) for k in range(D))
-            for k,sign in rows:
-                target = (br*D+k)*N+bc*D+j
-                result[target] = result.get(target,0)+2*sign*value
-    for (br,bc),totals in row_sums.items():
-        closing = totals.get(D,0)
-        rows = range(D) if closing else (i for i in totals if i < D)
-        for i in rows:
-            shift = closing-totals.get(i,0)
-            if shift:
-                start = (br*D+i)*N+bc*D
-                for j in range(D):
-                    result[start+j] = result.get(start+j,0)+shift
-    result = _Form({i:v for i,v in result.items() if v})/2
-    return result, 6*(D-2)*(D-3)
-
+# ---------- Sparse serialization ----------
 
 
 class SparseAxis:
@@ -465,7 +385,7 @@ class Scheme:
             "tensor": [self.N, self.N, self.N],
             "is_complete_matrix_multiplication_scheme": True,
             "axis_convention": "U,V read row-major inputs; W writes row-major C=AB.",
-            "construction": "LITA weighted closed-field aggregation",
+            "construction": "LITA row-column aggregation",
         }, separators=(",", ":")))
         np.savez_compressed(path, **arrays)
 
@@ -473,19 +393,14 @@ class Scheme:
 def lita(N):
     """Construct the explicit rational weighted LITA scheme over Q."""
     _check_dimension(N)
-    coordinates=_Coordinates(N)
-    scheme=Scheme(N)
-    for family in (_triangle_terms,_edge_terms,_boundary_terms):
-        for term in family(coordinates):
-            rows=tuple(_project(f,N) for f in term)
-            if not all(f for f,d in rows):
-                raise RuntimeError("unexpected zero projected factor")
-            scheme.append(*rows)
-    basis=_shared_basis(N,coordinates.grid)
-    for term in _center_raw((basis,basis,basis),coordinates.D):
-        if not all(term):
-            raise RuntimeError("unexpected zero central factor")
-        scheme.append(*((f,coordinates.grid) for f in term))
+    coordinates = _Coordinates(N)
+    views = tuple(_View(coordinates,a) for a in range(3))
+    scheme = Scheme(N)
+    for family in (_triangle_terms,_edge_terms,_boundary_terms,_center_terms):
+        for term in family(coordinates,views):
+            if not all(term):
+                raise RuntimeError("unexpected zero factor in "+family.__name__)
+            scheme.append(*((f,coordinates.grid) for f in term))
     if scheme.rank != lita_rank(N):
         raise RuntimeError("internal LITA rank mismatch")
     return scheme

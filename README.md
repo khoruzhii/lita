@@ -5,26 +5,26 @@ This repository contains rational schemes for square matrix multiplication and t
 | N | rank R | ω |
 |---:|---:|---:|
 | 13 | 1420 | 2.82985 |
-| 14 | 1604 | 2.79655 |
-| 16 | 2248 | 2.78361 |
-| 18 | 3044 | 2.77505 |
+| 14 | 1603 | 2.79631 |
+| 16 | 2247 | 2.78345 |
+| 18 | 3043 | 2.77494 |
 | 19 | 3981 | 2.81524 |
-| 20 | 4008 | 2.76929 |
+| 20 | 4007 | 2.76921 |
 | 21 | 5160 | 2.80789 |
-| 22 | 5156 | 2.76538 |
+| 22 | 5155 | 2.76532 |
 | 23 | 6545 | 2.80226 |
-| 24 | 6504 | 2.76275 |
+| 24 | 6503 | 2.76270 |
 | 25 | 8152 | 2.79788 |
-| 26 | 8068 | 2.76102 |
+| 26 | 8067 | 2.76098 |
 | 27 | 9997 | 2.79445 |
-| 28 | 9864 | 2.75993 |
+| 28 | 9863 | 2.75990 |
 | 29 | 12096 | 2.79174 |
-| 30 | 11908 | 2.75931 |
+| 30 | 11907 | 2.75929 |
 | 31 | 14465 | 2.78961 |
-| 32 | 14216 | 2.75905 |
-| 34 | 16804 | **2.75904** |
+| 32 | 14215 | 2.75903 |
+| 34 | 16803 | **2.75902** |
 
-For `N=34`, rank `16804` gives the smallest exponent in this catalogue and improves the `N=44` exponent `2.77320` reported by Schwartz and Zwecher in [arXiv:2508.01748](https://arxiv.org/abs/2508.01748) to `2.75904`.
+For `N=34`, rank `16803` gives the smallest exponent in this catalogue and improves the `N=44` exponent `2.77320` reported by Schwartz and Zwecher in [arXiv:2508.01748](https://arxiv.org/abs/2508.01748) to `2.75902`.
 
 ## Repository Contents
 
@@ -96,13 +96,13 @@ C = np.einsum(
 `N ≥ 8`:
 
 ```bash
-python scripts/lita.py 22 schemes/22x22x22_r5156.npz
+python scripts/lita.py 22 schemes/22x22x22_r5155.npz
 ```
 
 Its rank is
 
 ```text
-R_even(N) = N^3/3 + 3*N^2 + 20*N/3 + 8.
+R_even(N) = N^3/3 + 3*N^2 + 20*N/3 + 7.
 ```
 
 This construction gives all even-dimensional schemes in `schemes/`.
