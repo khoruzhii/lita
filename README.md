@@ -1,30 +1,21 @@
 # Local Improvements to Trilinear Aggregation
 
-This repository contains rational schemes for square matrix multiplication and their construction. These constructions build on Victor Pan’s trilinear aggregation techniques ([1978](https://doi.org/10.1109/SFCS.1978.34), [1982](https://doi.org/10.1016/0898-1221(82)90037-2)). The table lists the `⟨N×N×N : R⟩` schemes in `schemes/` with exponent `ω = log_N R`.
+This repository contains rational schemes for square matrix multiplication and their construction. These constructions build on Victor Pan’s trilinear aggregation techniques ([1978](https://doi.org/10.1109/SFCS.1978.34), [1982](https://doi.org/10.1016/0898-1221(82)90037-2)). The table lists the even-dimensional `⟨N×N×N : R⟩` schemes in `schemes/` with exponent `ω = log_N R`. Odd-dimensional schemes are listed in [LITA odd](#lita-odd).
 
 | N | rank R | ω |
 |---:|---:|---:|
-| 13 | 1420 | 2.82985 |
-| 14 | 1603 | 2.79631 |
-| 16 | 2247 | 2.78345 |
-| 18 | 3043 | 2.77494 |
-| 19 | 3981 | 2.81524 |
-| 20 | 4007 | 2.76921 |
-| 21 | 5160 | 2.80789 |
-| 22 | 5155 | 2.76532 |
-| 23 | 6545 | 2.80226 |
-| 24 | 6503 | 2.76270 |
-| 25 | 8152 | 2.79788 |
-| 26 | 8067 | 2.76098 |
-| 27 | 9997 | 2.79445 |
-| 28 | 9863 | 2.75990 |
-| 29 | 12096 | 2.79174 |
-| 30 | 11907 | 2.75929 |
-| 31 | 14465 | 2.78961 |
-| 32 | 14215 | 2.75903 |
-| 34 | 16803 | **2.75902** |
+| 14 | 1594 | 2.79418 |
+| 16 | 2237 | 2.78184 |
+| 18 | 3032 | 2.77368 |
+| 20 | 3995 | 2.76820 |
+| 22 | 5142 | 2.76450 |
+| 24 | 6489 | 2.76202 |
+| 26 | 8052 | 2.76041 |
+| 28 | 9847 | 2.75941 |
+| 30 | 11890 | 2.75887 |
+| 32 | 14197 | **2.75866** |
 
-For `N=34`, rank `16803` gives the smallest exponent in this catalogue and improves the `N=44` exponent `2.77320` reported by Schwartz and Zwecher in [arXiv:2508.01748](https://arxiv.org/abs/2508.01748) to `2.75902`.
+For `N=32`, rank `14197` gives the smallest exponent in this catalogue and improves the `N=44` exponent `2.77320` reported by Schwartz and Zwecher in [arXiv:2508.01748](https://arxiv.org/abs/2508.01748) to `2.75866`.
 
 ## Repository Contents
 
@@ -96,14 +87,17 @@ C = np.einsum(
 `N ≥ 8`:
 
 ```bash
-python scripts/lita.py 22 schemes/22x22x22_r5155.npz
+python scripts/lita.py 22 schemes/22x22x22_r5142.npz
 ```
 
 Its rank is
 
 ```text
-R_even(N) = N^3/3 + 3*N^2 + 20*N/3 + 7.
+R_even(N) = N^3/3 + 3*N^2 + 37*N/6 + 5.
 ```
+
+For this family, `ω(N) = log_N R_even(N)` is minimized over even `N ≥ 8`
+at `N=32`, with `R=14197` and `ω ≈ 2.75866`.
 
 This construction gives all even-dimensional schemes in `schemes/`.
 
@@ -144,6 +138,22 @@ This decomposition is not reducible, while its pair factors satisfy `(1,1)×(1,1
 ```text
 T = (1,0)×(1,0)×(3,2) + (0,1)×(0,1)×(2,3) + (1,−1)×(1,−1)×(0,−2).
 ```
+
+## LITA odd
+
+The main focus has been on even dimensions. Nevertheless, the following
+schemes were also found for odd `N` and are included in `schemes/`.
+
+| N | rank R | ω |
+|---:|---:|---:|
+| 13 | 1420 | 2.82985 |
+| 19 | 3981 | 2.81524 |
+| 21 | 5160 | 2.80789 |
+| 23 | 6545 | 2.80226 |
+| 25 | 8152 | 2.79788 |
+| 27 | 9997 | 2.79445 |
+| 29 | 12096 | 2.79174 |
+| 31 | 14465 | 2.78961 |
 
 ## Citation
 

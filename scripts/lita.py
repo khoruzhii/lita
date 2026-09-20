@@ -1,7 +1,7 @@
 """
 Rational LITA schemes for even square matrix multiplication.
 
-R(N) = N^3/3 + 3*N^2 + 20*N/3 + 7.
+R(N) = N^3/3 + 3*N^2 + 37*N/6 + 5.
 
 API:
     rank = lita_rank(N)
@@ -32,7 +32,7 @@ def _check_dimension(N):
 def lita_rank(N):
     _check_dimension(N)
     D = N // 2
-    return 16*(D+1)*D*(D-1)//6 + 12*D*(D-1) + 28*D + 7
+    return 16*(D+1)*D*(D-1)//6 + 12*D*(D-1) + 27*D + 5
 
 
 def _add_scaled(row, other, scale):
@@ -99,14 +99,14 @@ class _Form(dict):
 class _Coordinates:
     """Forms in original row-major coordinates, stored as grid*F.
 
-    The grid covers the border denominator 4*(D-2)^2, the half-sums,
-    and the boundary/center denominator D-3. All divisions are exact.
+    The grid covers the border denominator 4*(D-2)^2, the common form,
+    half-sums, and the boundary and polarization factors. Divisions are exact.
     """
 
     def __init__(self, N):
         self.N, self.D = N, N // 2
         self.w = 2-self.D
-        self.grid = 8*(self.D-2)**2*(self.D-3)
+        self.grid = 96*(self.D-2)**2*(self.D-3)
         self._entries = {}
 
     def weight(self, i):
@@ -134,19 +134,33 @@ class _Coordinates:
 
 
 class _View:
-    """One input's final parameters; A and B agree, C closes differently."""
+    """One input's anchor parameters and its closing condition."""
 
     def __init__(self, coordinates, axis):
         self.coordinates = coordinates
         self.D = D = coordinates.D
         X = coordinates.entry
-        self.r0 = [X(0,i,i)+X(2,i,i) for i in range(D)]
+        self.gamma = (X(0,2,2)+X(1,2,3)+X(2,3,2)+X(3,3,3))/3
+        self.r0 = []
+        for i in range(D):
+            if axis == 0:
+                r = (X(0,0,1)+X(2,0,1) if i == 0 else
+                     X(0,i,i)-X(3,i,i)+X(2,1,i)+X(3,1,i))
+            elif axis == 1 and i == 1:
+                r = X(0,1,1)-X(3,1,1)+X(2,0,1)+X(3,0,1)
+            else:
+                r = X(0,i,0)+X(2,i,0)
+            self.r0.append(r)
         self.r0.append(_sum(self.r0)/(D-2))
-        self.c0 = [X(2,i,i) for i in range(D)]
-        self.c1 = [X(3,i,i) for i in range(D)]
+        self.c0 = [self.r0[i]-X(0,i,i)+self.gamma for i in range(D)]
+        self.c1 = [X(3,i,i)-self.gamma for i in range(D)]
         closing_sum = _sum(self.c0+self.c1)/(D-2)
-        closing_c0 = (closing_sum-X(3,D,D) if axis == 2
-                      else self.r0[D]-X(0,D,D))
+        if axis == 0:
+            closing_c0 = self.r0[D]-X(0,D,D)+self.gamma
+        elif axis == 1:
+            closing_c0 = closing_sum+X(0,D,D)+self.r0[D]+self.gamma
+        else:
+            closing_c0 = closing_sum-X(0,D,D)+self.gamma
         self.c0.append(closing_c0)
         self.c1.append(closing_sum-closing_c0)
         self._entries = {}
@@ -214,7 +228,15 @@ def _triangle_terms(coordinates, views):
                     term = [_cycle(v,i,j,k,barred) for v in views]
                     term[2] = (-1 if barred else 1)*term[2]
                     yield _weighted(term,coordinates,(i,j,k))
-                yield _weighted(_mixed_factors(views,i,j,k,barred),coordinates,(i,j,k))
+                if barred == 1 and i == 1 and k == 0 and 2 <= j < coordinates.D:
+                    continue
+                term = _mixed_factors(views,i,j,k,barred)
+                if barred == 0 and i == 0 and j == 1 and 2 <= k < coordinates.D:
+                    other = _mixed_factors(views,1,k,0,1)
+                    if term[:2] != other[:2]:
+                        raise ArithmeticError("anchor triangle alignment failed")
+                    term = term[0],term[1],term[2]+other[2]
+                yield _weighted(term,coordinates,(i,j,k))
 
 
 def _seeds(view, i, j):
@@ -229,39 +251,41 @@ def _heptad(seeds):
     yield from _cyclic(tuple((h[4],-h[0]-h[2],-h[0]-h[1]) for h in seeds))
 
 
-# ---------- Eight cyclic ordinary-edge prototypes ----------
+# ---------- Ordinary-edge prototypes and pooled vertex terms ----------
 
 
-def _edge_forms(view, i, j):
-    X = view.coordinates.entry
-    forms = []
-    for r,s in ((i,j),(j,i)):
-        forms.extend((
-            X(2,s,s)+X(3,s,s)-X(2,r,s)-X(3,r,s),
-            X(0,r,r)+X(2,r,r)-X(0,r,s)-X(2,r,s),
-            X(0,r,r)+X(3,s,s)+X(1,r,s)+X(2,s,r),
-            X(1,r,r)+X(2,s,s)+X(0,r,s)+X(3,s,r),
-            2*(X(3,s,r)-view.c1[r]-view.half_sum(3,r,s)),
-            2*(X(0,s,r)-view.r0[s]+view.c0[r]-view.half_sum(0,r,s))))
-    forms.append(X(2,i,i)+X(2,j,j)-X(2,i,j)-X(2,j,i))
-    return (None,)+tuple(forms)
-
-
-def _edge_recipe(l):
-    return ((l[1],l[3]+l[13]-l[1],l[5]),
-            (-l[1],l[3],l[4]+l[9]),
-            (-l[2],l[6],l[3]+l[13]-l[2]),
-            (l[2],l[10]+l[9],l[3]),
-            (l[7],l[9]+l[13]-l[7],l[11]),
-            (-l[7],l[9],l[10]+l[3]),
-            (-l[8],l[12],l[9]+l[13]-l[8]),
-            (l[8],l[4]+l[3],l[9]))
+def _edge_recipe(view, i, j):
+    Y,g = view.entry,view.gamma
+    a,b,c,d = (Y(k,i,j) for k in range(4))
+    ap,bp,cp,dp = (Y(k,j,i) for k in range(4))
+    ui,uj = Y(1,i,i)+g,Y(1,j,j)+g
+    li,lj = Y(2,i,i)+g,Y(2,j,j)+g
+    pi = b+cp-g
+    return ((-c-d,b+d,2*(dp+g-view.half_sum(3,i,j))),
+            (c+d+li,pi,bp+dp+a+c+lj+ui),
+            (a+c,2*(ap+g-view.half_sum(0,i,j)),a+b),
+            (-a-c-lj,ap+bp+c+d+li+uj,pi))
 
 
 def _edge_terms(coordinates, views):
     for i,j in combinations(range(coordinates.D),2):
-        recipes = tuple(_edge_recipe(_edge_forms(v,i,j)) for v in views)
-        for r in range(8):
+        for left,right in ((i,j),(j,i)):
+            recipes = tuple(_edge_recipe(v,left,right) for v in views)
+            for r in range(4):
+                yield from _cyclic(tuple(recipe[r] for recipe in recipes))
+
+
+def _vertex_terms(coordinates, views):
+    D,w = coordinates.D,coordinates.w
+    for i in range(D):
+        recipes = []
+        for v in views:
+            Y,g = v.entry,v.gamma
+            u,l = Y(1,i,i)+g,Y(2,i,i)+g
+            k0 = v.half_sum(0,i,i)+w*(Y(1,i,D)+Y(2,D,i))+(D-4)*g
+            k3 = v.half_sum(3,i,i)+w*(Y(1,D,i)+Y(2,i,D))+(D-4)*g
+            recipes.append(((2*u,l,k0),(-2*l,u,k3)))
+        for r in range(2):
             yield from _cyclic(tuple(recipe[r] for recipe in recipes))
 
 
@@ -271,16 +295,11 @@ def _edge_terms(coordinates, views):
 def _boundary_terms(coordinates, views):
     D,w = coordinates.D,coordinates.w
     for i in range(D):
-        f = tuple(_cycle(v,i,i,D,0) for v in views)
-        g = tuple(_cycle(v,D,D,i,0) for v in views)
-        if f[:2] != g[:2]:
-            raise ArithmeticError("block-0 boundary alignment failed")
-        yield f[0],f[1],w*f[2]+w*w*g[2]
-        f = tuple(_cycle(v,i,i,D,1) for v in views)
-        g = tuple(_cycle(v,D,D,i,1) for v in views)
-        if f[2] != g[2]:
-            raise ArithmeticError("block-3 boundary alignment failed")
-        yield f[0]+w*g[0],f[1]+w*g[1],(-w*f[2])/(1+w)
+        for barred in (0,1):
+            b = 3*barred
+            term = tuple(v.entry(b,i,D)+v.entry(b,D,i)
+                         +((D-2)*v.entry(b,D,D)-v.gamma)/(D-3) for v in views)
+            yield (D-2)*(D-3)*term[0],term[1],(-1 if barred else 1)*term[2]
         for ids in ((i,i,D),(i,D,i),(i,D,D),(D,i,i),(D,i,D),(D,D,i)):
             for barred in (0,1):
                 yield _weighted(_mixed_factors(views,*ids,barred),coordinates,ids)
@@ -290,19 +309,31 @@ def _boundary_terms(coordinates, views):
 
 
 def _center_terms(coordinates, views):
-    D,w = coordinates.D,coordinates.w
-    seeds = tuple(_seeds(v,D,D) for v in views)
-    h0,h1,h2,h3,h4 = seeds[2]
-    yield (w*w*seeds[0][0],seeds[1][0],
-           (w*(5-D)*h0+3*w*(3-D)*(h1+h2)-2*h3)/(3-D))
-    unprimed,primed = [],[]
-    for h0,h1,h2,h3,h4 in seeds:
-        total = h0+h1+h2
-        unprimed.append((h1,h2,2*h3-w*total))
-        primed.append((2*h4+w*total,-h0-h2,-h0-h1))
-    for recipes in (unprimed,primed):
-        for u,v,z in _cyclic(recipes):
-            yield w*w*u,v,z
+    D = coordinates.D
+    t = D-2
+    recipes,polar = [],[]
+    for view in views:
+        a,b,c,d = (view.entry(k,D,D) for k in range(4))
+        g,q = view.gamma,coordinates.entry(0,D,D)
+        h = d-a
+        eta = 3*g-4*(5*D-12)*q-2*t*(b-c)
+        L = (2*g-a-d)/(2*(D-3))-4*q
+        U = a+view.half_sum(3,D,D)+t*(3*g-10*q+2*c+2*d-eta)
+        V = -d-view.half_sum(0,D,D)-t*(3*g-10*q+2*a+2*c-eta)
+        recipes.append(((c+d+h/(D-3),b+d,U),
+                        (U+2*t*(a+b),c+d,b+d),
+                        (b+d,U,c+d),
+                        (V,a+b,a+c-h/(D-3)),
+                        (a+c,V,a+b),
+                        (a+b,a+c,V-2*t*(b+d))))
+        polar.append((eta,h,L))
+    for r in range(6):
+        u,v,z = (recipes[axis][r][axis] for axis in range(3))
+        yield 2*t*t*u,v,z
+    for epsilon in (-1,1):
+        for delta in (-1,1):
+            u,v,z = (eta+epsilon*h+delta*L for eta,h,L in polar)
+            yield (-t**3*epsilon*delta*u)/4,v,z
 
 
 # ---------- Sparse serialization ----------
@@ -396,10 +427,10 @@ def lita(N):
     coordinates = _Coordinates(N)
     views = tuple(_View(coordinates,a) for a in range(3))
     scheme = Scheme(N)
-    for family in (_triangle_terms,_edge_terms,_boundary_terms,_center_terms):
+    for family in (_triangle_terms,_edge_terms,_vertex_terms,_boundary_terms,_center_terms):
         for term in family(coordinates,views):
             if not all(term):
-                raise RuntimeError("unexpected zero factor in "+family.__name__)
+                continue
             scheme.append(*((f,coordinates.grid) for f in term))
     if scheme.rank != lita_rank(N):
         raise RuntimeError("internal LITA rank mismatch")
