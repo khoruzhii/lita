@@ -1,7 +1,7 @@
 """
 Rational LITA schemes for odd square matrix multiplication.
 
-R(N) = N^3/3 + 15*N^2/4 + 17*N/3 + 1/4.
+R(N) = N^3/3 + 15*N^2/4 + 14*N/3 + 13/4.
 
 API:
     rank = lita_odd_rank(N)
@@ -31,7 +31,7 @@ def _check_dimension(N):
 
 def lita_odd_rank(N):
     _check_dimension(N)
-    return (4*N**3 + 45*N**2 + 68*N + 3)//12
+    return (4*N**3 + 45*N**2 + 56*N + 39)//12
 
 
 def _add_scaled(row, other, scale):
@@ -165,8 +165,15 @@ class _View:
                 self.upper[j] = Y(0,0,1)+Y(0,1,j)+Y(0,j,0)
             self.upper[D] = Y(0,1,D)+Y(1,1,D)
             self.field[1] = -Y(0,0,1)-Y(1,0,1)
+        elif axis == 1:
+            for j in range(3,D):
+                self.upper[j] = -Y(0,0,1)-Y(0,1,j)-Y(0,j,0)
+            self.upper[D] = -Y(0,D,1)-Y(0,1,0)-Y(0,0,D)
+            self.field[0] = Y(0,1,0)+Y(1,1,0)
         # Weighted closure of the combined field determines its last free value.
-        self.field[0] = (D-2)*(self.upper[D]+self.field[D])-_sum(self.upper[:D]+self.field[1:D])
+        free = 1 if axis == 1 else 0
+        self.field[free] = ((D-2)*(self.upper[D]+self.field[D])
+                            -_sum(self.upper[:D]+self.field[:D]))
         self._entries = {}
         self.row_sums = {b: tuple(_sum(coordinates.weight(k)*self.entry(b,j,k)
                                      for k in range(D+1)) for j in range(D+1))
@@ -204,6 +211,13 @@ def _merge(first, second, axis, description):
     row = list(first)
     row[axis] = row[axis]+second[axis]
     return tuple(row)
+
+
+def _cycle_midpoint(first, second):
+    """Keep twice the midpoint product; its two-field error is pooled below."""
+    if first[2] != second[2]:
+        raise ArithmeticError("upper cycles on C differ")
+    return first[0]+second[0], (first[1]+second[1])/2, first[2]
 
 
 # ---------- One weighted aggregation identity ----------
@@ -244,7 +258,7 @@ def _triangle_terms(c, views):
                     other_ids = None
                     retain = True
                     if not barred and 1 in vertices:
-                        retain = 0 in vertices and i < j < k
+                        retain = 0 in vertices and i < j < k and k == 2
                         if retain:
                             other_ids = (k,j,i)
                     elif not barred and 0 in vertices:
@@ -253,11 +267,12 @@ def _triangle_terms(c, views):
                         row = tuple(_cycle(v,i,j,k,barred) for v in views)
                         if other_ids is not None:
                             other = tuple(_cycle(v,*other_ids,0) for v in views)
-                            row = _merge(row, other, 0, "upper cycle identification")
+                            row = _cycle_midpoint(row, other)
                         row = row[0],row[1],(-1 if barred else 1)*row[2]
                         yield _weighted(row,c,(i,j,k))
                 if barred and ((i >= 2 and j == 1 and k == 0)
-                               or (i == 0 and j >= 2 and k == 1)):
+                               or (i == 0 and j >= 2 and k == 1)
+                               or (i == 0 and j == 1 and k >= 2)):
                     continue  # Included in the pooled pole group.
                 row = _mixed_factors(views,i,j,k,barred)
                 if not barred and (i,j,k) == (0,1,D):
@@ -301,8 +316,9 @@ def _edge_terms(c, views):
             for r in range(4):
                 rows = tuple(recipe[r] for recipe in recipes)
                 for shift,row in enumerate(_cyclic(rows)):
-                    if (left,right) == (1,0) and r < 2 and shift in (1,2):
-                        continue  # Pool only the rotations with z on B or C.
+                    if r < 2 and (((left,right) == (1,0) and shift in (1,2))
+                                  or ((left,right) == (0,1) and shift == 0)):
+                        continue  # Use the orientation matching the common pole factor.
                     if (left,right,r) == (1,2,2) and shift in (0,1):
                         continue
                     if (left,right,r) == (0,2,2) and shift in (0,1):
@@ -313,21 +329,34 @@ def _edge_terms(c, views):
 
 
 def _pole_terms(coordinates, views):
-    """Pool only the two rotations whose common pole factor is on B or C."""
-    for j in range(1,coordinates.D+1):
-        recipes = []
-        for view in views:
-            Y,g = view.entry,view.gamma
-            z = Y(2,1,0)+Y(3,1,0)
-            if j == 1:
-                p = Y(2,0,1)-g-Y(3,1,0)
-                q = Y(1,0,1)+Y(3,0,1)+Y(1,1,1)+g
-            else:
-                p = Y(2,0,j)-Y(3,j,1)-Y(3,1,0)
-                q = Y(1,j,1)+Y(2,1,0)-Y(3,0,j)
-            recipes.append((z,p,q))
-        for u,v,w in _cyclic(recipes,(1,2)):
-            yield coordinates.weight(j)*u,v,w
+    """Pool orientation 0->1 on A and 1->0 on B and C."""
+    for p,q,shifts in ((0,1,(0,)),(1,0,(1,2))):
+        for j in range(1,coordinates.D+1):
+            recipes = []
+            for view in views:
+                Y,g = view.entry,view.gamma
+                z = Y(2,p,q)+Y(3,p,q)
+                if j == 1:
+                    u = Y(2,q,p)-g-Y(3,p,q)
+                    v = Y(1,q,p)+Y(3,q,p)+Y(1,p,p)+g
+                else:
+                    u = Y(2,q,j)-Y(3,j,p)-Y(3,p,q)
+                    v = Y(1,j,p)+Y(2,p,q)-Y(3,q,j)
+                recipes.append((z,u,v))
+            for u,v,w in _cyclic(recipes,shifts):
+                yield coordinates.weight(j)*u,v,w
+
+
+def _upper_error_terms(c, views):
+    """Sum the two-field cycle errors, including the closing boundary term."""
+    A,B,C = views
+    D,Y = c.D,C.entry
+    for i in range(3,D+1):
+        H = (C.row_sums[0][i]+C.column_sums[0][0]-2*Y(0,i,0)
+             -2*C.gamma-c.weight(i)*_cycle(C,0,i,i,0))
+        if i == D:
+            H -= (D-3)*_boundary_cycle(C,0,0)
+        yield 2*c.weight(i)*A.upper[i],B.upper[i],H
 
 
 def _vertex_terms(coordinates, views):
@@ -362,7 +391,7 @@ def _boundary_terms(c, views):
             row = tuple(_boundary_cycle(v,i,barred) for v in views)
             if not barred and i == 0:
                 other = tuple(_boundary_cycle(v,1,0) for v in views)
-                row = _merge(row, other, 0, "upper boundary cycle identification")
+                row = _cycle_midpoint(row, other)
             yield (D-2)*(D-3)*row[0],row[1],(-1 if barred else 1)*row[2]
         for ids in ((i,i,D),(i,D,i),(i,D,D),(D,i,i),(D,i,D),(D,D,i)):
             for barred in (0,1):
@@ -495,11 +524,12 @@ def iter_terms(N, statistics=None):
     views = tuple(_View(c,a) for a in range(3))
     D = c.D
     families = (
-        ("triangles", _triangle_terms, 16*comb(D+1,3)-(D-1)*(D+5)-3),
-        ("edges", _edge_terms, 24*comb(D,2)-19*D+17),
-        ("poles", _pole_terms, 2*D),
+        ("triangles", _triangle_terms, 16*comb(D+1,3)-(D-1)*(D+8)),
+        ("edges", _edge_terms, 24*comb(D,2)-20*D+18),
+        ("poles", _pole_terms, 3*D),
+        ("upper_errors", _upper_error_terms, D-2),
         ("vertices", _vertex_terms, 6*(D-2)),
-        ("boundary", _boundary_terms, 28*D-19),
+        ("boundary", _boundary_terms, 28*D-20),
         ("center", _center_terms, 10),
     )
     counts = {}

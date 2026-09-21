@@ -151,7 +151,7 @@ schemes were also found for odd `N` and are included in `schemes/`.
 `scripts/lita_odd.py` constructs rational schemes for odd `7 <= N < 32`, with
 
 ```text
-R_odd(N) = N^3/3 + 15*N^2/4 + 17*N/3 + 1/4.
+R_odd(N) = N^3/3 + 15*N^2/4 + 14*N/3 + 13/4.
 ```
 
 It generates the entries below for `N >= 15`. For `N=13`, the rank-1420
@@ -160,15 +160,15 @@ scheme was obtained by applying a 2-reduction to a previously known rank-1421 sc
 | N | rank R | ω |
 |---:|---:|---:|
 | 13 | 1420 | 2.82985 |
-| 15 | 2054 | 2.81662 |
-| 17 | 2818 | 2.80381 |
-| 19 | 3748 | 2.79475 |
-| 21 | 4860 | 2.78822 |
-| 23 | 6170 | 2.78344 |
-| 25 | 7694 | 2.77991 |
-| 27 | 9448 | 2.77731 |
-| 29 | 11448 | 2.77539 |
-| 31 | 13710 | 2.77400 |
+| 15 | 2042 | 2.81445 |
+| 17 | 2804 | 2.80205 |
+| 19 | 3732 | 2.79330 |
+| 21 | 4842 | 2.78700 |
+| 23 | 6150 | 2.78240 |
+| 25 | 7672 | 2.77902 |
+| 27 | 9424 | 2.77654 |
+| 29 | 11422 | 2.77472 |
+| 31 | 13682 | 2.77340 |
 
 ## Citation
 
