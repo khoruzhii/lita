@@ -119,6 +119,10 @@ The following property was the main guide in searching for improvements to trili
 Let T = Σₜ uₜ⊗vₜ⊗wₜ, Xₜ = uₜ⊗vₜ and yₜ = wₜ.
 The decomposition is 2-reducible if, for some p, Xₚ = Σ_{t≠p} αₜ Xₜ.
 In this case the p-th term can be removed: T = Σ_{t≠p} Xₜ⊗(yₜ + αₜyₚ).
+
+Let T = Σₜ uₜ⊗vₜ⊗wₜ , Xₜ = uₜ⊗vₜ and yₜ = wₜ.
+The decomposition has block flip if, for some u' and v', u'⊗v' = -Xₚ + Σ_{t≠p} αₜ Xₜ.
+In this case the p-th term can be replaced: T = u'⊗v'⊗yₚ + Σ_{t≠p} Xₜ⊗(yₜ + αₜyₚ).
 ```
 
 A fast 2-reducibility check is implemented in `src/reduce.h`. It searches for
@@ -144,16 +148,27 @@ T = (1,0)×(1,0)×(3,2) + (0,1)×(0,1)×(2,3) + (1,−1)×(1,−1)×(0,−2).
 The main focus has been on even dimensions. Nevertheless, the following
 schemes were also found for odd `N` and are included in `schemes/`.
 
+`scripts/lita_odd.py` constructs rational schemes for odd `7 <= N < 32`, with
+
+```text
+R_odd(N) = N^3/3 + 15*N^2/4 + 17*N/3 + 1/4.
+```
+
+It generates the entries below for `N >= 15`. For `N=13`, the rank-1420
+scheme was obtained by applying a 2-reduction to a previously known rank-1421 scheme.
+
 | N | rank R | ω |
 |---:|---:|---:|
 | 13 | 1420 | 2.82985 |
-| 19 | 3981 | 2.81524 |
-| 21 | 5160 | 2.80789 |
-| 23 | 6545 | 2.80226 |
-| 25 | 8152 | 2.79788 |
-| 27 | 9997 | 2.79445 |
-| 29 | 12096 | 2.79174 |
-| 31 | 14465 | 2.78961 |
+| 15 | 2054 | 2.81662 |
+| 17 | 2818 | 2.80381 |
+| 19 | 3748 | 2.79475 |
+| 21 | 4860 | 2.78822 |
+| 23 | 6170 | 2.78344 |
+| 25 | 7694 | 2.77991 |
+| 27 | 9448 | 2.77731 |
+| 29 | 11448 | 2.77539 |
+| 31 | 13710 | 2.77400 |
 
 ## Citation
 
