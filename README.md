@@ -145,30 +145,24 @@ T = (1,0)×(1,0)×(3,2) + (0,1)×(0,1)×(2,3) + (1,−1)×(1,−1)×(0,−2).
 
 ## LITA odd
 
-The main focus has been on even dimensions. Nevertheless, the following
-schemes were also found for odd `N` and are included in `schemes/`.
-
-`scripts/lita_odd.py` constructs rational schemes for odd `7 <= N < 32`, with
+As a complement to the even-dimensional construction, schemes for odd `N` are also included in `schemes/`. `scripts/lita_odd.py` constructs rational schemes for odd `9 <= N < 32`, with rank
 
 ```text
-R_odd(N) = N^3/3 + 15*N^2/4 + 14*N/3 + 13/4.
+R_odd(N) = N^3/3 + 7*N^2/2 + 14*N/3 - 9/2.
 ```
-
-It generates the entries below for `N >= 15`. For `N=13`, the rank-1420
-scheme was obtained by applying a 2-reduction to a previously known rank-1421 scheme.
 
 | N | rank R | ω |
 |---:|---:|---:|
-| 13 | 1420 | 2.82985 |
-| 15 | 2042 | 2.81445 |
-| 17 | 2804 | 2.80205 |
-| 19 | 3732 | 2.79330 |
-| 21 | 4842 | 2.78700 |
-| 23 | 6150 | 2.78240 |
-| 25 | 7672 | 2.77902 |
-| 27 | 9424 | 2.77654 |
-| 29 | 11422 | 2.77472 |
-| 31 | 13682 | 2.77340 |
+| 13 | 1380 | 2.81871 |
+| 15 | 1978 | 2.80270 |
+| 17 | 2724 | 2.79183 |
+| 19 | 3634 | 2.78426 |
+| 21 | 4724 | 2.77890 |
+| 23 | 6010 | 2.77506 |
+| 25 | 7508 | 2.77231 |
+| 27 | 9234 | 2.77036 |
+| 29 | 11204 | 2.76900 |
+| 31 | 13434 | 2.76808 |
 
 ## Citation
 

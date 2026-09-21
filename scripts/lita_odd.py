@@ -1,14 +1,14 @@
 """
 Rational LITA schemes for odd square matrix multiplication.
 
-R(N) = N^3/3 + 15*N^2/4 + 14*N/3 + 13/4.
+R(N) = N^3/3 + 7*N^2/2 + 14*N/3 - 9/2.
 
 API:
     rank = lita_odd_rank(N)
     scheme = lita_odd(N)
     scheme.save("scheme.npz")
 
-N must be odd with 7 <= N < 32.
+N must be odd with 9 <= N < 32.
 """
 
 import argparse
@@ -25,13 +25,14 @@ import numpy as np
 
 
 def _check_dimension(N):
-    if type(N) is not int or N < 7 or N >= 32 or N % 2 != 1:
-        raise ValueError("N must be an odd integer with 7 <= N < 32")
+    if type(N) is not int or N < 9 or N >= 32 or N % 2 != 1:
+        raise ValueError("N must be an odd integer with 9 <= N < 32")
 
 
 def lita_odd_rank(N):
     _check_dimension(N)
-    return (4*N**3 + 45*N**2 + 56*N + 39)//12
+    m = (N-3)//2
+    return 16*comb(m,3)+68*comb(m,2)+98*m+50
 
 
 def _add_scaled(row, other, scale):
@@ -81,146 +82,95 @@ class _Form(dict):
         return result
 
 
-# ---------- Signed blocks and row-column parameters ----------
+# ---------- Signed blocks and column parameters ----------
 
 
 class _Coordinates:
-    """Forms in original row-major coordinates, stored as grid*F.
+    """Sparse row completion: M=[[X,X*s0],[0,0]], Z=M*H^{-1}.
 
-    Upper vertices 0 and 1 duplicate one row and average two columns.
-    The standard weighted block completion is shared by all three inputs.
-    All divisions on the coefficient grid are exact.
+    The extra lower row is zero. A single added column gives Q*s=0.
+    All ordinary entries are signed physical entries; no dense projection
+    is required. Defects are computed from the actual block column sums.
     """
 
     def __init__(self, N):
         _check_dimension(N)
-        self.N, self.D = N, (N+1) // 2
+        self.physical_N = N
+        self.K = K = (N+1)//2
+        self.D = K-1
         self.w = 2-self.D
-        self.grid = 384*(self.D-2)**2*(self.D-3)
+        self.grid = 24*(self.D-2)*(self.D-3)
         self._entries = {}
+        self.row_dot = tuple(_Form({i*N+j:self.grid*(1 if j<K else -1)
+                                        for j in range(N)}) for i in range(N))
+        self.defects = {
+            b: tuple(_sum(self.weight(k)*(self.entry(left,k,i)
+                                               +self.entry(right,k,i))
+                               for k in range(K)) for i in range(K))
+            for b,left,right in ((0,0,2),(3,1,3))
+        }
+        self.q = _sum(self.entry(b,self.D,self.D) for b in range(4))/4
 
     def weight(self, i):
         return self.w if i == self.D else 1
 
     def entry(self, block, i, j):
-        key = block, i, j
+        key = block,i,j
         if key not in self._entries:
-            D, N = self.D, self.N
-            br, bc = divmod(block, 2)
-            if i < D and j < D:
-                row = D-1+i if br else max(0,i-1)
-                col = D-1+j if bc else max(0,j-1)
-                value = self.grid * (-1 if bc else 1)
-                if bc == 0 and j < 2:
-                    value //= 2
-                result = _Form({row*N+col: value})
-            elif i < D:
-                result = _sum(self.entry(2*br+b, i, k)
-                              for b in range(2) for k in range(D))/(2*(D-2))
-            elif j < D:
-                result = _sum(self.entry(2*a+bc, k, j)
-                              for a in range(2) for k in range(D))/(2*(D-2))
+            br,bc = divmod(block,2)
+            row,col = br*self.K+i,bc*self.K+j
+            if row == self.physical_N:
+                out = _Form()
+            elif col == self.physical_N:
+                out = self.row_dot[row]/(-self.w)
             else:
-                result = _sum(self.entry(b, r, s) for b in range(4)
-                              for r in range(D) for s in range(D))/(4*(D-2)**2)
-            self._entries[key] = result
+                value = self.grid*((-1) if bc else 1)//self.weight(j)
+                out = _Form({row*self.physical_N+col:value})
+            self._entries[key] = out
         return self._entries[key]
 
 
 class _View:
-    """Opposite pole normalizations, evaluated directly in the final blocks."""
+    """One column source with the pooled closing conditions."""
 
     def __init__(self, coordinates, axis):
-        self.coordinates = coordinates
-        self.D = D = coordinates.D
-        X = coordinates.entry
+        self.coordinates = c = coordinates
+        self.D = D = c.D
+        X = c.entry
+        self.gamma = g = (X(0,0,0)+X(1,0,1)+X(2,1,0)+X(3,1,1))/3
+        self.a = [g-X(0, i, i) for i in range(D)]
+        self.b = [X(3, i, i)-g for i in range(D)]
+        total = -_sum(self.a+self.b)/c.w
         if axis == 0:
-            trace = _Form({i*coordinates.N+i: coordinates.grid for i in range(coordinates.N)})
-            self.gamma = (X(1,0,D)+X(2,D,0)+X(0,0,0)+X(0,D,D)-trace/(D-2))/3
-        else:
-            self.gamma = (X(0,0,0)+X(1,0,2)+X(2,2,0)+X(3,2,2))/3
-        self.r0 = [X(0,i,0)+X(2,i,0) for i in range(D)]
-        self.r0.append(_sum(self.r0)/(D-2))
-        self.c0 = [self.r0[i]-X(0,i,i)+self.gamma for i in range(D)]
-        self.c1 = [X(3,i,i)-self.gamma for i in range(D)]
-        closing_sum = _sum(self.c0+self.c1)/(D-2)
-        if axis == 0:
-            last = self.r0[D]-X(0,D,D)+self.gamma
+            last = g-X(0,D,D)
         elif axis == 1:
-            last = closing_sum+X(0,D,D)+self.r0[D]+self.gamma
+            last = total+X(1,D,D)+g
         else:
-            last = closing_sum-X(0,D,D)+self.gamma
-        self.c0.append(last)
-        self.c1.append(closing_sum-last)
-        Y = self._base_entry
-        self.upper = [_Form() for _ in range(D+1)]
-        self.field = [_Form() for _ in range(D+1)]
-        # Normalize pi(pole,j) to gamma, including the closing column.
-        pole = 1 if axis == 0 else 0
-        for j in range(2,D+1):
-            self.field[j] = (2*pole-1)*(Y(1,pole,j)+Y(2,j,pole)-self.gamma)
-        if axis == 0:
-            self.upper[2] = Y(2,2,3)+Y(1,3,0)-Y(0,0,2)
-            for j in range(3,D):
-                self.upper[j] = Y(0,0,1)+Y(0,1,j)+Y(0,j,0)
-            self.upper[D] = Y(0,1,D)+Y(1,1,D)
-            self.field[1] = -Y(0,0,1)-Y(1,0,1)
-        elif axis == 1:
-            for j in range(3,D):
-                self.upper[j] = -Y(0,0,1)-Y(0,1,j)-Y(0,j,0)
-            self.upper[D] = -Y(0,D,1)-Y(0,1,0)-Y(0,0,D)
-            self.field[0] = Y(0,1,0)+Y(1,1,0)
-        # Weighted closure of the combined field determines its last free value.
-        free = 1 if axis == 1 else 0
-        self.field[free] = ((D-2)*(self.upper[D]+self.field[D])
-                            -_sum(self.upper[:D]+self.field[:D]))
+            last = total-X(3,D,D)+g
+        self.a.append(last)
+        self.b.append(total-last)
         self._entries = {}
-        self.row_sums = {b: tuple(_sum(coordinates.weight(k)*self.entry(b,j,k)
-                                     for k in range(D+1)) for j in range(D+1))
-                         for b in (0,3)}
-        self.column_sums = {b: tuple(_sum(coordinates.weight(k)*self.entry(b,k,i)
-                                        for k in range(D+1)) for i in range(D+1))
-                            for b in (0,3)}
-
-    def _base_entry(self, block, i, j):
-        X = self.coordinates.entry(block,i,j)
-        if block == 0:
-            return X-self.r0[i]+self.c0[j]
-        if block == 1:
-            return X+self.r0[i]+self.c1[j]
-        return X-(self.c0[j] if block == 2 else self.c1[j])
+        self.row_sums = {
+            b: tuple(_sum(c.weight(k)*self.entry(b, i, k)
+                              for k in range(D+1)) for i in range(D+1))
+            for b in (0, 3)
+        }
+        self.column_sums = {
+            b: tuple(_sum(c.weight(k)*self.entry(b, k, i)
+                              for k in range(D+1)) for i in range(D+1))
+            for b in (0, 3)
+        }
 
     def entry(self, block, i, j):
         key = block, i, j
         if key not in self._entries:
-            result = self._base_entry(block,i,j)
-            if block < 2 and i < 2:
-                correction = self.upper[j] if block == 0 else self.field[j]
-                result = result+(1-2*i)*correction
-            self._entries[key] = result
+            delta = self.a[j] if block in (0, 2) else self.b[j]
+            self._entries[key] = self.coordinates.entry(block, i, j)
+            self._entries[key] += (1 if block < 2 else -1)*delta
         return self._entries[key]
 
     def half_sum(self, block, i, j):
         return (self.row_sums[block][j]+self.column_sums[block][i])/2
-
-
-def _merge(first, second, axis, description):
-    """Combine two unweighted products along their only unshared axis."""
-    if any(first[a] != second[a] for a in range(3) if a != axis):
-        raise ArithmeticError(description+": shared factors differ")
-    row = list(first)
-    row[axis] = row[axis]+second[axis]
-    return tuple(row)
-
-
-def _cycle_midpoint(first, second):
-    """Keep twice the midpoint product; its two-field error is pooled below."""
-    if first[2] != second[2]:
-        raise ArithmeticError("upper cycles on C differ")
-    return first[0]+second[0], (first[1]+second[1])/2, first[2]
-
-
-# ---------- One weighted aggregation identity ----------
 
 
 def _cycle(view, i, j, k, barred):
@@ -243,42 +193,22 @@ def _weighted(term, coordinates, ids):
     return tuple(f*coordinates.weight(i) for f,i in zip(term,ids))
 
 
-def _cyclic(recipes, shifts=(0,1,2)):
+def _cyclic(recipes):
     """Rotate recipes first, evaluating each in its destination input."""
-    for shift in shifts:
+    for shift in range(3):
         yield tuple(recipes[a][(a+shift)%3] for a in range(3))
 
 
 def _triangle_terms(c, views):
-    D = c.D
-    for vertices in combinations(range(D+1),3):
-        for i,j,k in permutations(vertices):
-            for barred in (0,1):
+    for vertices in combinations(range(c.D+1), 3):
+        for i, j, k in permutations(vertices):
+            for barred in (0, 1):
                 if i < j < k or k < j < i:
-                    other_ids = None
-                    retain = True
-                    if not barred and 1 in vertices:
-                        retain = 0 in vertices and i < j < k and k == 2
-                        if retain:
-                            other_ids = (k,j,i)
-                    elif not barred and 0 in vertices:
-                        other_ids = tuple(1 if v == 0 else v for v in (i,j,k))
-                    if retain:
-                        row = tuple(_cycle(v,i,j,k,barred) for v in views)
-                        if other_ids is not None:
-                            other = tuple(_cycle(v,*other_ids,0) for v in views)
-                            row = _cycle_midpoint(row, other)
-                        row = row[0],row[1],(-1 if barred else 1)*row[2]
-                        yield _weighted(row,c,(i,j,k))
-                if barred and ((i >= 2 and j == 1 and k == 0)
-                               or (i == 0 and j >= 2 and k == 1)
-                               or (i == 0 and j == 1 and k >= 2)):
-                    continue  # Included in the pooled pole group.
-                row = _mixed_factors(views,i,j,k,barred)
-                if not barred and (i,j,k) == (0,1,D):
-                    other = _mixed_factors(views,1,1,D,0)
-                    row = _merge(row, other, 0, "pole-one boundary absorption")
-                yield _weighted(row,c,(i,j,k))
+                    row = tuple(_cycle(v, i, j, k, barred) for v in views)
+                    row = row[0], row[1], (-1 if barred else 1)*row[2]
+                    yield _weighted(row, c, (i, j, k))
+                yield _weighted(_mixed_factors(views, i, j, k, barred),
+                                     c, (i, j, k))
 
 
 def _seeds(view, i, j):
@@ -309,99 +239,72 @@ def _edge_recipe(view, i, j):
             (-a-c-lj,ap+bp+c+d+li+uj,pi))
 
 
-def _edge_terms(c, views):
-    for i,j in combinations(range(c.D),2):
+def _edge_terms(coordinates, views):
+    for i,j in combinations(range(coordinates.D),2):
         for left,right in ((i,j),(j,i)):
             recipes = tuple(_edge_recipe(v,left,right) for v in views)
             for r in range(4):
-                rows = tuple(recipe[r] for recipe in recipes)
-                for shift,row in enumerate(_cyclic(rows)):
-                    if r < 2 and (((left,right) == (1,0) and shift in (1,2))
-                                  or ((left,right) == (0,1) and shift == 0)):
-                        continue  # Use the orientation matching the common pole factor.
-                    if (left,right,r) == (1,2,2) and shift in (0,1):
-                        continue
-                    if (left,right,r) == (0,2,2) and shift in (0,1):
-                        other = tuple(_edge_recipe(v,1,2)[2] for v in views)
-                        other = tuple(other[a][(a+shift)%3] for a in range(3))
-                        row = _merge(row,other,(-shift)%3,"reference-edge identification")
-                    yield row
+                yield from _cyclic(tuple(recipe[r] for recipe in recipes))
 
 
-def _pole_terms(coordinates, views):
-    """Pool orientation 0->1 on A and 1->0 on B and C."""
-    for p,q,shifts in ((0,1,(0,)),(1,0,(1,2))):
-        for j in range(1,coordinates.D+1):
-            recipes = []
-            for view in views:
-                Y,g = view.entry,view.gamma
-                z = Y(2,p,q)+Y(3,p,q)
-                if j == 1:
-                    u = Y(2,q,p)-g-Y(3,p,q)
-                    v = Y(1,q,p)+Y(3,q,p)+Y(1,p,p)+g
-                else:
-                    u = Y(2,q,j)-Y(3,j,p)-Y(3,p,q)
-                    v = Y(1,j,p)+Y(2,p,q)-Y(3,q,j)
-                recipes.append((z,u,v))
-            for u,v,w in _cyclic(recipes,shifts):
-                yield coordinates.weight(j)*u,v,w
-
-
-def _upper_error_terms(c, views):
-    """Sum the two-field cycle errors, including the closing boundary term."""
-    A,B,C = views
-    D,Y = c.D,C.entry
-    for i in range(3,D+1):
-        H = (C.row_sums[0][i]+C.column_sums[0][0]-2*Y(0,i,0)
-             -2*C.gamma-c.weight(i)*_cycle(C,0,i,i,0))
-        if i == D:
-            H -= (D-3)*_boundary_cycle(C,0,0)
-        yield 2*c.weight(i)*A.upper[i],B.upper[i],H
-
-
-def _vertex_terms(coordinates, views):
-    D,w = coordinates.D,coordinates.w
+def _vertex_terms(c, views):
+    D, w = c.D, c.w
     for i in range(D):
         recipes = []
         for v in views:
-            Y,g = v.entry,v.gamma
-            u,l = Y(1,i,i)+g,Y(2,i,i)+g
-            k0 = v.half_sum(0,i,i)+w*(Y(1,i,D)+Y(2,D,i))+(D-4)*g
-            k3 = v.half_sum(3,i,i)+w*(Y(1,D,i)+Y(2,i,D))+(D-4)*g
-            recipes.append(((2*u,l,k0),(-2*l,u,k3)))
+            Y, g = v.entry, v.gamma
+            u, ell = Y(1, i, i)+g, Y(2, i, i)+g
+            k0 = (v.half_sum(0, i, i)+w*(Y(1, i, D)+Y(2, D, i))
+                  +(D-4)*g-c.defects[0][i])
+            k3 = (v.half_sum(3, i, i)+w*(Y(1, D, i)+Y(2, i, D))
+                  +(D-4)*g-c.defects[3][i])
+            recipes.append(((2*u, ell, k0), (-2*ell, u, k3)))
         for r in range(2):
             yield from _cyclic(tuple(recipe[r] for recipe in recipes))
+
+
+def _column_correction_terms(c, views):
+    """Two cyclic prototypes per ordered off-diagonal pair.
+
+    The actual column defects are unchanged by the source.
+    Row closure allows subtracting the diagonal in the third factors;
+    hence no diagonal correction products remain, including at the center.
+    """
+    for i in range(c.D+1):
+        for j in range(c.D+1):
+            if i == j:
+                continue
+            recipes = []
+            for v in views:
+                Y = v.entry
+                recipes.append((
+                    (c.defects[0][i], Y(0, i, j)+Y(1, i, j),
+                     Y(2, i, j)-Y(2, i, i)),
+                    (-c.defects[3][i], Y(2, i, j)+Y(3, i, j),
+                     Y(1, i, j)-Y(1, i, i)),
+                ))
+            for r in range(2):
+                for u, v, z in _cyclic(tuple(recipe[r] for recipe in recipes)):
+                    yield c.weight(i)*u, c.weight(j)*v, z
 
 
 # ---------- Boundary edges and the closing vertex ----------
 
 
-def _boundary_cycle(view, i, barred):
-    D,b = view.D,3*barred
-    return (view.entry(b,i,D)+view.entry(b,D,i)
-            +((D-2)*view.entry(b,D,D)-view.gamma)/(D-3))
-
-
-def _boundary_terms(c, views):
-    D,w = c.D,c.w
+def _boundary_terms(coordinates, views):
+    D,w = coordinates.D,coordinates.w
     for i in range(D):
         for barred in (0,1):
-            if not barred and i == 1:
-                continue
-            row = tuple(_boundary_cycle(v,i,barred) for v in views)
-            if not barred and i == 0:
-                other = tuple(_boundary_cycle(v,1,0) for v in views)
-                row = _cycle_midpoint(row, other)
-            yield (D-2)*(D-3)*row[0],row[1],(-1 if barred else 1)*row[2]
+            b = 3*barred
+            term = tuple(v.entry(b,i,D)+v.entry(b,D,i)
+                         +((D-2)*v.entry(b,D,D)-v.gamma)/(D-3) for v in views)
+            yield (D-2)*(D-3)*term[0],term[1],(-1 if barred else 1)*term[2]
         for ids in ((i,i,D),(i,D,i),(i,D,D),(D,i,i),(D,i,D),(D,D,i)):
             for barred in (0,1):
-                if not barred and ids == (1,1,D):
-                    # Absorbed into the positive (0,1,D) corner product.
-                    continue
-                yield _weighted(_mixed_factors(views,*ids,barred),c,ids)
+                yield _weighted(_mixed_factors(views,*ids,barred),coordinates,ids)
         for left,right in ((i,D),(D,i)):
             for u,v,z in _heptad(tuple(_seeds(view,left,right) for view in views)):
-                yield c.weight(left)*u,c.weight(right)*v,2*z
+                yield coordinates.weight(left)*u,coordinates.weight(right)*v,2*z
 
 
 def _center_terms(coordinates, views):
@@ -410,7 +313,7 @@ def _center_terms(coordinates, views):
     recipes,polar = [],[]
     for view in views:
         a,b,c,d = (view.entry(k,D,D) for k in range(4))
-        g,q = view.gamma,coordinates.entry(0,D,D)
+        g,q = view.gamma,coordinates.q
         h = d-a
         eta = 3*g-4*(5*D-12)*q-2*t*(b-c)
         L = (2*g-a-d)/(2*(D-3))-4*q
@@ -513,47 +416,45 @@ class Scheme:
             "tensor": [self.N, self.N, self.N],
             "is_complete_matrix_multiplication_scheme": True,
             "axis_convention": "U,V read row-major inputs; W writes row-major C=AB.",
-            "construction": "LITA odd row-column aggregation",
+            "construction": "LITA odd column-defect aggregation",
         }, separators=(",", ":")))
         np.savez_compressed(path, **arrays)
 
 
 def iter_terms(N, statistics=None):
-    """Yield rational factors for tr(A B C) on a common positive grid."""
     c = _Coordinates(N)
-    views = tuple(_View(c,a) for a in range(3))
+    views = tuple(_View(c,axis) for axis in range(3))
     D = c.D
     families = (
-        ("triangles", _triangle_terms, 16*comb(D+1,3)-(D-1)*(D+8)),
-        ("edges", _edge_terms, 24*comb(D,2)-20*D+18),
-        ("poles", _pole_terms, 3*D),
-        ("upper_errors", _upper_error_terms, D-2),
-        ("vertices", _vertex_terms, 6*(D-2)),
-        ("boundary", _boundary_terms, 28*D-20),
+        ("triangles", _triangle_terms, 16*comb(D+1, 3)),
+        ("edges", _edge_terms, 24*comb(D, 2)-6),
+        ("vertices", _vertex_terms, 6*D),
+        ("boundary", _boundary_terms, 28*D),
         ("center", _center_terms, 10),
+        ("column_correction", _column_correction_terms, 6*D*(D+1)),
     )
     counts = {}
-    for name,family,expected in families:
+    for name, family, expected in families:
         count = 0
-        for term in family(c,views):
+        for term in family(c, views):
             if not all(term):
                 continue
             count += 1
-            yield tuple((f,c.grid) for f in term)
+            yield tuple((f, c.grid) for f in term)
         if count != expected:
             raise ArithmeticError(f"{name}: emitted {count}, expected {expected}")
         counts[name] = count
     if sum(counts.values()) != lita_odd_rank(N):
-        raise ArithmeticError("odd-LITA total length mismatch")
+        raise ArithmeticError("direct odd-LITA rank mismatch")
     if statistics is not None:
-        statistics.update(N=N,D=D,m=D-2,rank=sum(counts.values()),
-                          family_counts=counts,numerator_grid=c.grid,
-                          construction="odd LITA in the original even ansatz")
+        statistics.update(N=N, D=D, m=D-1, rank=sum(counts.values()),
+                          family_counts=counts, numerator_grid=c.grid,
+                          construction="sparse direct odd LITA with column defects")
 
 
 def lita_odd(N):
     scheme = Scheme(N)
-    for term in iter_terms(N,scheme.statistics):
+    for term in iter_terms(N, scheme.statistics):
         scheme.append(*term)
     return scheme
 
@@ -570,9 +471,7 @@ def main():
     scheme = lita_odd(args.N)
     if args.output:
         scheme.save(args.output)
-    print(f"N={args.N} rank={scheme.rank}")
-    if args.output:
-        print(Path(args.output))
+    print(scheme.statistics)
 
 
 if __name__ == "__main__":
