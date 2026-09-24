@@ -1,7 +1,7 @@
 """
 Rational LITA schemes for odd square matrix multiplication.
 
-R(N) = N^3/3 + 7*N^2/2 + 14*N/3 - 9/2.
+R(N) = N^3/3 + 7*N^2/2 + 14*N/3 - 11/2.
 
 API:
     rank = lita_odd_rank(N)
@@ -32,7 +32,7 @@ def _check_dimension(N):
 def lita_odd_rank(N):
     _check_dimension(N)
     m = (N-3)//2
-    return 16*comb(m,3)+68*comb(m,2)+98*m+50
+    return 16*comb(m,3)+68*comb(m,2)+98*m+49
 
 
 def _add_scaled(row, other, scale):
@@ -99,7 +99,8 @@ class _Coordinates:
         self.K = K = (N+1)//2
         self.D = K-1
         self.w = 2-self.D
-        self.grid = 24*(self.D-2)*(self.D-3)
+        t = self.D-2
+        self.grid = 144*t*(t-1)**2*(4*t-3)
         self._entries = {}
         self.row_dot = tuple(_Form({i*N+j:self.grid*(1 if j<K else -1)
                                         for j in range(N)}) for i in range(N))
@@ -131,9 +132,9 @@ class _Coordinates:
 
 
 class _View:
-    """One column source with the pooled closing conditions."""
+    """One column source with one closing rule shared by all three inputs."""
 
-    def __init__(self, coordinates, axis):
+    def __init__(self, coordinates):
         self.coordinates = c = coordinates
         self.D = D = c.D
         X = c.entry
@@ -141,12 +142,9 @@ class _View:
         self.a = [g-X(0, i, i) for i in range(D)]
         self.b = [X(3, i, i)-g for i in range(D)]
         total = -_sum(self.a+self.b)/c.w
-        if axis == 0:
-            last = g-X(0,D,D)
-        elif axis == 1:
-            last = total+X(1,D,D)+g
-        else:
-            last = total-X(3,D,D)+g
+        t = D-2
+        h = X(3,D,D)-X(0,D,D)-total
+        last = g-4*(t-1)*c.q-h/2-X(0,D,D)
         self.a.append(last)
         self.b.append(total-last)
         self._entries = {}
@@ -308,31 +306,36 @@ def _boundary_terms(coordinates, views):
 
 
 def _center_terms(coordinates, views):
+    """Three cyclic prototypes, including every boundary-pooling remainder."""
     D = coordinates.D
-    t = D-2
-    recipes,polar = [],[]
+    t, s = D-2, D-3
+    k, f = 2*t-1, 4*t-3
+    recipes = []
     for view in views:
-        a,b,c,d = (view.entry(k,D,D) for k in range(4))
-        g,q = view.gamma,coordinates.q
-        h = d-a
-        eta = 3*g-4*(5*D-12)*q-2*t*(b-c)
-        L = (2*g-a-d)/(2*(D-3))-4*q
-        U = a+view.half_sum(3,D,D)+t*(3*g-10*q+2*c+2*d-eta)
-        V = -d-view.half_sum(0,D,D)-t*(3*g-10*q+2*a+2*c-eta)
-        recipes.append(((c+d+h/(D-3),b+d,U),
-                        (U+2*t*(a+b),c+d,b+d),
-                        (b+d,U,c+d),
-                        (V,a+b,a+c-h/(D-3)),
-                        (a+c,V,a+b),
-                        (a+b,a+c,V-2*t*(b+d))))
-        polar.append((eta,h,L))
-    for r in range(6):
-        u,v,z = (recipes[axis][r][axis] for axis in range(3))
-        yield 2*t*t*u,v,z
-    for epsilon in (-1,1):
-        for delta in (-1,1):
-            u,v,z = (eta+epsilon*h+delta*L for eta,h,L in polar)
-            yield (-t**3*epsilon*delta*u)/4,v,z
+        Y, g = view.entry, view.gamma
+        a, b, c, d = (Y(j,D,D) for j in range(4))
+        h, u, v = d-a, a+c, a+b
+        if a+d != 2*g-8*s*coordinates.q:
+            raise ArithmeticError("the nine-product closing condition failed")
+        aq = k*(16*t**3-4*t*t-9*t+6)*coordinates.q/6
+        bh = k*(8*t*t+4*t-3)*h/6
+        ch = (8*t**3-11*t+6)*h/(6*s)
+        p0 = -view.half_sum(0,D,D)-g+4*aq-bh
+        p1 = view.half_sum(3,D,D)+g-4*aq-bh
+        p2 = view.half_sum(3,D,D)-view.half_sum(0,D,D)+ch
+        x = 2*s*u+k*(v+h)
+        y = k*(u+h)+2*s*v
+        z = k*u+2*s*(v+h)
+        w = 2*s*(u+h)+k*v
+        plus = 2*s*(u-v)+k*h
+        minus = 2*s*(v-u)+k*h
+        recipes.append(((p0,x,y),(p1,z,w),(p2,plus,minus)))
+    for r in range(3):
+        for u,v,z in _cyclic(tuple(row[r] for row in recipes)):
+            if r < 2:
+                yield (2*t*t*u)/f, v, z
+            else:
+                yield (t*t*u)/(2*s*f), v, z
 
 
 # ---------- Sparse serialization ----------
@@ -416,21 +419,22 @@ class Scheme:
             "tensor": [self.N, self.N, self.N],
             "is_complete_matrix_multiplication_scheme": True,
             "axis_convention": "U,V read row-major inputs; W writes row-major C=AB.",
-            "construction": "LITA odd column-defect aggregation",
+            "construction": "LITA odd column-defect aggregation with nine-product pooled center",
         }, separators=(",", ":")))
         np.savez_compressed(path, **arrays)
 
 
 def iter_terms(N, statistics=None):
     c = _Coordinates(N)
-    views = tuple(_View(c,axis) for axis in range(3))
+    view = _View(c)
+    views = (view, view, view)
     D = c.D
     families = (
         ("triangles", _triangle_terms, 16*comb(D+1, 3)),
         ("edges", _edge_terms, 24*comb(D, 2)-6),
         ("vertices", _vertex_terms, 6*D),
         ("boundary", _boundary_terms, 28*D),
-        ("center", _center_terms, 10),
+        ("center", _center_terms, 9),
         ("column_correction", _column_correction_terms, 6*D*(D+1)),
     )
     counts = {}
@@ -449,7 +453,7 @@ def iter_terms(N, statistics=None):
     if statistics is not None:
         statistics.update(N=N, D=D, m=D-1, rank=sum(counts.values()),
                           family_counts=counts, numerator_grid=c.grid,
-                          construction="sparse direct odd LITA with column defects")
+                          construction="sparse direct odd LITA with a nine-product pooled center")
 
 
 def lita_odd(N):
