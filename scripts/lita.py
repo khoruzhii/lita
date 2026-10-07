@@ -1,7 +1,7 @@
 """
 Rational LITA schemes for even square matrix multiplication.
 
-R(N) = N^3/3 + 3*N^2 + 37*N/6 + 5.
+R(N) = N^3/3 + 3*N^2 + 37*N/6 + 4.
 
 API:
     rank = lita_rank(N)
@@ -32,7 +32,7 @@ def _check_dimension(N):
 def lita_rank(N):
     _check_dimension(N)
     D = N // 2
-    return 16*(D+1)*D*(D-1)//6 + 12*D*(D-1) + 27*D + 5
+    return 16*(D+1)*D*(D-1)//6 + 12*D*(D-1) + 27*D + 4
 
 
 def _add_scaled(row, other, scale):
@@ -99,14 +99,14 @@ class _Form(dict):
 class _Coordinates:
     """Forms in original row-major coordinates, stored as grid*F.
 
-    The grid covers the border denominator 4*(D-2)^2, the common form,
-    half-sums, and the boundary and polarization factors. Divisions are exact.
+    The grid covers completion, half-sums, and both factors of D-3
+    in the nine-product center denominators. Divisions are exact.
     """
 
     def __init__(self, N):
         self.N, self.D = N, N // 2
         self.w = 2-self.D
-        self.grid = 96*(self.D-2)**2*(self.D-3)
+        self.grid = 96*(self.D-2)**2*(self.D-3)**2*(4*(self.D-2)-3)
         self._entries = {}
 
     def weight(self, i):
@@ -155,12 +155,10 @@ class _View:
         self.c0 = [self.r0[i]-X(0,i,i)+self.gamma for i in range(D)]
         self.c1 = [X(3,i,i)-self.gamma for i in range(D)]
         closing_sum = _sum(self.c0+self.c1)/(D-2)
-        if axis == 0:
-            closing_c0 = self.r0[D]-X(0,D,D)+self.gamma
-        elif axis == 1:
-            closing_c0 = closing_sum+X(0,D,D)+self.r0[D]+self.gamma
-        else:
-            closing_c0 = closing_sum-X(0,D,D)+self.gamma
+        # Common nine-product center closing condition:
+        # a+d=2*gamma-8*(D-3)*q, preserving c0_D+c1_D.
+        closing_c0 = (self.gamma-(4*(D-3)+1)*X(0,D,D)
+                      +(self.r0[D]+closing_sum)/2)
         self.c0.append(closing_c0)
         self.c1.append(closing_sum-closing_c0)
         self._entries = {}
@@ -309,31 +307,36 @@ def _boundary_terms(coordinates, views):
 
 
 def _center_terms(coordinates, views):
+    """Three cyclic prototypes, including every boundary-pooling remainder."""
     D = coordinates.D
-    t = D-2
-    recipes,polar = [],[]
+    t, s = D-2, D-3
+    k, f = 2*t-1, 4*t-3
+    recipes = []
     for view in views:
-        a,b,c,d = (view.entry(k,D,D) for k in range(4))
-        g,q = view.gamma,coordinates.entry(0,D,D)
-        h = d-a
-        eta = 3*g-4*(5*D-12)*q-2*t*(b-c)
-        L = (2*g-a-d)/(2*(D-3))-4*q
-        U = a+view.half_sum(3,D,D)+t*(3*g-10*q+2*c+2*d-eta)
-        V = -d-view.half_sum(0,D,D)-t*(3*g-10*q+2*a+2*c-eta)
-        recipes.append(((c+d+h/(D-3),b+d,U),
-                        (U+2*t*(a+b),c+d,b+d),
-                        (b+d,U,c+d),
-                        (V,a+b,a+c-h/(D-3)),
-                        (a+c,V,a+b),
-                        (a+b,a+c,V-2*t*(b+d))))
-        polar.append((eta,h,L))
-    for r in range(6):
-        u,v,z = (recipes[axis][r][axis] for axis in range(3))
-        yield 2*t*t*u,v,z
-    for epsilon in (-1,1):
-        for delta in (-1,1):
-            u,v,z = (eta+epsilon*h+delta*L for eta,h,L in polar)
-            yield (-t**3*epsilon*delta*u)/4,v,z
+        Y, g = view.entry, view.gamma
+        a, b, c, d = (Y(j,D,D) for j in range(4))
+        h, u, v = d-a, a+c, a+b
+        if a+d != 2*g-8*s*coordinates.entry(0,D,D):
+            raise ArithmeticError("the nine-product closing condition failed")
+        aq = k*(16*t**3-4*t*t-9*t+6)*coordinates.entry(0,D,D)/6
+        bh = k*(8*t*t+4*t-3)*h/6
+        ch = (8*t**3-11*t+6)*h/(6*s)
+        p0 = -view.half_sum(0,D,D)-g+4*aq-bh
+        p1 = view.half_sum(3,D,D)+g-4*aq-bh
+        p2 = view.half_sum(3,D,D)-view.half_sum(0,D,D)+ch
+        x = 2*s*u+k*(v+h)
+        y = k*(u+h)+2*s*v
+        z = k*u+2*s*(v+h)
+        w = 2*s*(u+h)+k*v
+        plus = 2*s*(u-v)+k*h
+        minus = 2*s*(v-u)+k*h
+        recipes.append(((p0,x,y),(p1,z,w),(p2,plus,minus)))
+    for r in range(3):
+        for u,v,z in _cyclic(tuple(row[r] for row in recipes)):
+            if r < 2:
+                yield (2*t*t*u)/f, v, z
+            else:
+                yield (t*t*u)/(2*s*f), v, z
 
 
 # ---------- Sparse serialization ----------
@@ -416,7 +419,7 @@ class Scheme:
             "tensor": [self.N, self.N, self.N],
             "is_complete_matrix_multiplication_scheme": True,
             "axis_convention": "U,V read row-major inputs; W writes row-major C=AB.",
-            "construction": "LITA row-column aggregation",
+            "construction": "LITA row-column aggregation with common nine-product center",
         }, separators=(",", ":")))
         np.savez_compressed(path, **arrays)
 
