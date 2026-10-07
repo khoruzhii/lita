@@ -4,18 +4,18 @@ This repository contains rational schemes for square matrix multiplication and t
 
 | N | rank R | ω |
 |---:|---:|---:|
-| 14 | 1594 | 2.79418 |
-| 16 | 2237 | 2.78184 |
-| 18 | 3032 | 2.77368 |
-| 20 | 3995 | 2.76820 |
-| 22 | 5142 | 2.76450 |
-| 24 | 6489 | 2.76202 |
-| 26 | 8052 | 2.76041 |
-| 28 | 9847 | 2.75941 |
-| 30 | 11890 | 2.75887 |
-| 32 | 14197 | **2.75866** |
+| 14 | 1593 | 2.79394 |
+| 16 | 2236 | 2.78168 |
+| 18 | 3031 | 2.77357 |
+| 20 | 3994 | 2.76812 |
+| 22 | 5141 | 2.76444 |
+| 24 | 6488 | 2.76198 |
+| 26 | 8051 | 2.76037 |
+| 28 | 9846 | 2.75938 |
+| 30 | 11889 | 2.75884 |
+| 32 | 14196 | **2.75864** |
 
-For `N=32`, rank `14197` gives the smallest exponent in this catalogue and improves the `N=44` exponent `2.77320` reported by Schwartz and Zwecher in [arXiv:2508.01748](https://arxiv.org/abs/2508.01748) to `2.75866`.
+For `N=32`, rank `14196` gives the smallest exponent in this catalogue and improves the `N=44` exponent `2.77320` reported by Schwartz and Zwecher in [arXiv:2508.01748](https://arxiv.org/abs/2508.01748) to `2.75864`.
 
 ## Repository Contents
 
@@ -87,17 +87,17 @@ C = np.einsum(
 `N ≥ 8`:
 
 ```bash
-python scripts/lita.py 22 schemes/22x22x22_r5142.npz
+python scripts/lita.py 22 schemes/22x22x22_r5141.npz
 ```
 
 Its rank is
 
 ```text
-R_even(N) = N^3/3 + 3*N^2 + 37*N/6 + 5.
+R_even(N) = N^3/3 + 3*N^2 + 37*N/6 + 4.
 ```
 
 For this family, `ω(N) = log_N R_even(N)` is minimized over even `N ≥ 8`
-at `N=32`, with `R=14197` and `ω ≈ 2.75866`.
+at `N=32`, with `R=14196` and `ω ≈ 2.75864`.
 
 This construction gives all even-dimensional schemes in `schemes/`.
 
